@@ -23,3 +23,13 @@ test("financial and confirmation rules are source-enforced", async () => {
   assert.match(source, /humanVerified/);
   assert.match(source, /subscription.*purchased/s);
 });
+
+test("quotation download and payment collection terms are implemented", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"));
+  assert.match(source, /application\/pdf/);
+  assert.match(source, /Quotation-Q-2026-0042\.pdf/);
+  assert.match(source, /Immediately/);
+  assert.match(source, /Within 3 days/);
+  assert.match(source, /Within 30 days/);
+  assert.match(source, /Finish job & set payment reminder/);
+});
