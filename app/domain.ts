@@ -10,3 +10,57 @@ export const consumeCredits = (subscription: number, purchased: number, amount =
   const fromSubscription = Math.min(subscription, amount);
   return { subscription: subscription - fromSubscription, purchased: purchased - (amount - fromSubscription) };
 };
+
+export type CreditBuckets = { subscription: number; welcome: number; purchased: number };
+export type CreditReservation = {
+  idempotencyKey: string;
+  generationId: string;
+  status: "reserved" | "committed" | "reversed";
+  debit: CreditBuckets;
+};
+
+export const reserveGenerationCredit = (
+  balances: CreditBuckets,
+  idempotencyKey: string,
+  generationId: string,
+  previous?: CreditReservation,
+) => {
+  if (previous?.idempotencyKey === idempotencyKey) return { balances, reservation: previous, duplicate: true };
+  if (balances.subscription + balances.welcome + balances.purchased < 1) throw new Error("INSUFFICIENT_CREDITS");
+  const debit: CreditBuckets = { subscription: 0, welcome: 0, purchased: 0 };
+  if (balances.subscription > 0) debit.subscription = 1;
+  else if (balances.welcome > 0) debit.welcome = 1;
+  else debit.purchased = 1;
+  return {
+    balances: {
+      subscription: balances.subscription - debit.subscription,
+      welcome: balances.welcome - debit.welcome,
+      purchased: balances.purchased - debit.purchased,
+    },
+    reservation: { idempotencyKey, generationId, status: "reserved" as const, debit },
+    duplicate: false,
+  };
+};
+
+export const commitGenerationCredit = (reservation: CreditReservation): CreditReservation => {
+  if (reservation.status !== "reserved") return reservation;
+  return { ...reservation, status: "committed" };
+};
+
+export const reverseGenerationCredit = (balances: CreditBuckets, reservation: CreditReservation) => {
+  if (reservation.status !== "reserved") return { balances, reservation };
+  return {
+    balances: {
+      subscription: balances.subscription + reservation.debit.subscription,
+      welcome: balances.welcome + reservation.debit.welcome,
+      purchased: balances.purchased + reservation.debit.purchased,
+    },
+    reservation: { ...reservation, status: "reversed" as const },
+  };
+};
+
+export const requireAdminReason = (role: string, reason: string) => {
+  if (role !== "admin") throw new Error("FORBIDDEN");
+  if (!reason.trim()) throw new Error("ADMIN_REASON_REQUIRED");
+  return true;
+};

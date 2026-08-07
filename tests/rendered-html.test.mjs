@@ -95,3 +95,23 @@ test("customer payment methods and team job compensation are implemented", async
   assert.match(schema, /jobCompensations/);
   assert.match(schema, /pending_completion/);
 });
+
+test("completion reports support free manual and reviewed AI drafts", async () => {
+  const app = await import("node:fs/promises").then(fs => fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"));
+  assert.match(app, /CompletionReportSheet/);
+  assert.match(app, /Manual completion report/);
+  assert.match(app, /AI DRAFT — PLEASE VERIFY/);
+  assert.match(app, /I confirm this report matches the work actually completed/);
+  assert.match(app, /Work-Report-WR-2026-0020\.pdf/);
+  assert.match(app, /Live transcription is enabled only after a provider is configured/);
+});
+
+test("pricing and credit integrity are configuration-driven", async () => {
+  const fs = await import("node:fs/promises");
+  const [config, domain] = await Promise.all([fs.readFile(new URL("../app/product-config.ts", import.meta.url), "utf8"), fs.readFile(new URL("../app/domain.ts", import.meta.url), "utf8")]);
+  for (const value of ["1200", "3000", "6800", "2900", "5900", "29000", "59000"]) assert.match(config, new RegExp(value));
+  assert.match(domain, /reserveGenerationCredit/);
+  assert.match(domain, /idempotencyKey/);
+  assert.match(domain, /reverseGenerationCredit/);
+  assert.match(domain, /ADMIN_REASON_REQUIRED/);
+});
