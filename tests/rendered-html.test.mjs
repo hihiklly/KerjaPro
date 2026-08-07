@@ -43,6 +43,13 @@ test("desktop and settings surfaces expose the sign-out flow", async () => {
   assert.match(source, /settings-signout/);
 });
 
+test("team and service catalogue use the main workspace pane", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"));
+  assert.match(source, /tab === "team".*workspace-page.*TeamSheet/s);
+  assert.match(source, /tab === "catalog".*workspace-page.*ServiceCatalog/s);
+  assert.doesNotMatch(source, /sheet === "(?:team|catalog)"/);
+});
+
 test("main workspace collections are loaded from local API routes", async () => {
   const source = await import("node:fs/promises").then(fs => fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"));
   for (const route of ["/api/workspace", "/api/customers?limit=100", "/api/jobs?limit=100", "/api/documents?limit=100"]) {
