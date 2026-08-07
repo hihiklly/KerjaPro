@@ -45,3 +45,15 @@ test("invoice sharing and tenant-scoped staff controls are present", async () =>
   assert.match(schema, /staffInvites/);
   assert.match(schema, /assignedMemberId/);
 });
+
+test("home SOP, payment receipts, and accounting readiness are present", async () => {
+  const fs = await import("node:fs/promises");
+  const [app, schema] = await Promise.all([fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"), fs.readFile(new URL("../db/schema.ts", import.meta.url), "utf8")]);
+  for (const step of ["Customer", "Quotation", "Do & finish work", "Invoice", "Payment receipt"]) assert.match(app, new RegExp(step.replace("&", "&")));
+  assert.match(app, /not MyInvois submissions/);
+  assert.match(app, /SST registration no/);
+  assert.match(app, /seven years/i);
+  assert.match(schema, /customerPayments/);
+  assert.match(schema, /taxIdentificationNo/);
+  assert.match(schema, /expenses/);
+});
