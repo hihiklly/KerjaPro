@@ -71,3 +71,15 @@ test("business registration and reusable service pricing are implemented", async
   assert.match(schema, /standardPriceMinor/);
   assert.match(schema, /businessType/);
 });
+
+test("managers can assign jobs with tenant-owned history", async () => {
+  const fs = await import("node:fs/promises");
+  const [app, schema] = await Promise.all([fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"), fs.readFile(new URL("../db/schema.ts", import.meta.url), "utf8")]);
+  assert.match(app, /MANAGER ACCESS/);
+  assert.match(app, /Assign to \{selectedMember\}/);
+  assert.match(app, /Assignment history/);
+  assert.match(app, /Manager — assign and monitor all jobs/);
+  assert.match(schema, /jobAssignments/);
+  assert.match(schema, /assignedByMemberId/);
+  assert.match(schema, /\["owner", "manager", "worker"\]/);
+});
