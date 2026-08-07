@@ -34,6 +34,7 @@ const savedServices = [
 
 export default function TradeApp() {
   const [tab, setTab] = useState<Tab>("home");
+  const [showOnboarding, setShowOnboarding] = useState(true);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [credits, setCredits] = useState(27);
   const [toast, setToast] = useState("");
@@ -65,17 +66,16 @@ export default function TradeApp() {
         <Brand />
         <nav aria-label="Main navigation">
           <NavButton active={tab === "home"} icon="⌂" label="Home" onClick={() => setTab("home")} />
-          <NavButton active={tab === "jobs"} icon="▣" label="Jobs" badge="3" onClick={() => setTab("jobs")} />
+          <NavButton active={tab === "jobs"} icon="▣" label="Job status" badge="3" onClick={() => setTab("jobs")} />
           <NavButton active={tab === "customers"} icon="♙" label="Customers" onClick={() => setTab("customers")} />
           <NavButton active={tab === "documents"} icon="▤" label="Documents" onClick={() => setTab("documents")} />
-          <NavButton active={tab === "more"} icon="•••" label="More" onClick={() => setTab("more")} />
+          <span className="nav-section">BUSINESS SETUP</span>
+          <NavButton active={false} icon="●" label="Profile" onClick={() => setSheet("register")} />
+          <NavButton active={false} icon="♙" label="Team accounts" onClick={() => setSheet("team")} />
+          <NavButton active={false} icon="▧" label="Accounting & templates" onClick={() => setSheet("accounting")} />
+          <NavButton active={tab === "more"} icon="⚙" label="Settings" onClick={() => setTab("more")} />
         </nav>
-        <div className="sidebar-help">
-          <span className="help-icon">?</span>
-          <strong>Need help?</strong>
-          <small>We speak simple English & BM.</small>
-          <button onClick={() => notify("Help request opened")}>Get help</button>
-        </div>
+        <button className="sidebar-setup" onClick={() => setShowOnboarding(true)}><span>✓</span><div><b>Setup guide</b><small>Review your company setup</small></div><em>›</em></button>
         <div className="profile-row">
           <span className="avatar">AT</span><span><strong>Ahmad Teknik</strong><small>Standard plan</small></span><button aria-label="Account menu">⌄</button>
         </div>
@@ -109,6 +109,8 @@ export default function TradeApp() {
         <NavButton active={tab === "documents"} icon="▤" label="Docs" onClick={() => setTab("documents")} />
       </nav>
 
+      {showOnboarding && <FirstRunOnboarding finish={() => { setShowOnboarding(false); notify("Welcome to your KerjaPro workspace"); }} />}
+
       {sheet && <div className="overlay" onMouseDown={e => e.target === e.currentTarget && setSheet(null)}>
         <section className={`sheet ${sheet === "quote" ? "wide" : ""}`} role="dialog" aria-modal="true">
           <button className="close" onClick={() => { setSheet(null); setQuoteStep("input"); }}>×</button>
@@ -134,6 +136,31 @@ export default function TradeApp() {
 function Brand() { return <div className="brand"><span className="brand-mark">K</span><span><b>Kerja</b>Pro<small>WORK MADE SIMPLE</small></span></div>; }
 function NavButton({ active, icon, label, badge, onClick }: { active: boolean; icon: string; label: string; badge?: string; onClick: () => void }) { return <button className={`nav-button ${active ? "active" : ""}`} onClick={onClick}><span>{icon}</span><b>{label}</b>{badge && <i>{badge}</i>}</button>; }
 function subtitle(tab: Tab) { return ({ jobs: "Your work, all in one place", customers: "People you work for", documents: "Quotes, reports and invoices", more: "Business and account settings", home: "" } as const)[tab]; }
+
+function FirstRunOnboarding({ finish }: { finish: () => void }) {
+  const [step, setStep] = useState(1);
+  const [businessType, setBusinessType] = useState<"team" | "solo">("team");
+  const steps = ["Your account", "Business profile", "Team", "Documents"];
+  return <div className="onboarding-overlay">
+    <section className="onboarding-shell" role="dialog" aria-modal="true" aria-label="New user registration">
+      <aside className="onboarding-aside">
+        <Brand />
+        <div className="onboarding-welcome"><span>NEW USER SETUP</span><h1>Set up your business in a few simple steps.</h1><p>Your details will be reused on every quotation, invoice and payment receipt.</p></div>
+        <ol>{steps.map((label, index) => <li key={label} className={step === index + 1 ? "active" : step > index + 1 ? "done" : ""}><i>{step > index + 1 ? "✓" : index + 1}</i><span><b>{label}</b><small>{index === 0 ? "Owner and login details" : index === 1 ? "Company and contact information" : index === 2 ? "Staff access and job assignment" : "Quotation, invoice and receipt design"}</small></span></li>)}</ol>
+        <div className="onboarding-safe"><b>▣ Your company workspace</b><p>The owner controls staff access, documents and accounting records.</p></div>
+      </aside>
+      <div className="onboarding-main">
+        <div className="onboarding-mobile-head"><Brand /><span>Step {step} of 4</span></div>
+        <div className="onboarding-progress"><i style={{width:`${step * 25}%`}} /></div>
+        {step === 1 && <div className="onboarding-form"><span className="eyebrow">STEP 1 · MASTER ACCOUNT</span><h2>Create your KerjaPro account</h2><p>This person can monitor the entire business, invite staff and view accounting records.</p><div className="form-grid onboarding-fields"><label>Full name<input defaultValue="Ahmad bin Ismail" /></label><label>Mobile / WhatsApp<input defaultValue="012-345 6789" /></label><label>Email address<input type="email" defaultValue="ahmad@example.com" /></label><label>Password<input type="password" defaultValue="password123" /></label></div><label className="check"><input type="checkbox" defaultChecked /> I agree to the Terms of Service and Privacy Policy.</label></div>}
+        {step === 2 && <div className="onboarding-form"><span className="eyebrow">STEP 2 · BUSINESS PROFILE</span><h2>Tell us how you work</h2><p>Choose the setup that matches your business. You can change company details later from Profile.</p><div className="business-choice"><button className={businessType === "team" ? "active" : ""} onClick={() => setBusinessType("team")}><span>▦</span><b>Company with a team</b><small>Owner or manager monitors all staff, jobs and documents.</small><em>MASTER + STAFF ACCOUNTS</em></button><button className={businessType === "solo" ? "active" : ""} onClick={() => setBusinessType("solo")}><span>♙</span><b>Individual business</b><small>One owner-worker manages everything in one account.</small><em>ONE PERSON ACCOUNT</em></button></div><div className="form-grid onboarding-fields"><label>Business name<input defaultValue="Ahmad Teknik Services" /></label><label>Business category<select defaultValue="aircon"><option value="aircon">Air-conditioning</option><option value="electrical">Electrical</option><option value="plumbing">Plumbing</option><option value="renovation">Renovation</option><option value="other">Other service</option></select></label><label>SSM registration number<input placeholder="Optional" /></label><label>Business phone<input defaultValue="012-345 6789" /></label><label className="full">Business address<textarea defaultValue="12 Jalan Molek 2/1, Taman Molek, 81100 Johor Bahru, Johor" /></label></div></div>}
+        {step === 3 && <div className="onboarding-form"><span className="eyebrow">STEP 3 · TEAM ACCOUNTS</span><h2>{businessType === "team" ? "Who helps run the business?" : "Your solo workspace is ready"}</h2><p>{businessType === "team" ? "Add staff now or skip and invite them later from Team accounts." : "You can switch to a team business later if you hire staff."}</p>{businessType === "team" ? <><div className="role-summary"><div><span className="customer-avatar">AM</span><b>Ahmad bin Ismail</b><small>Owner · Full company access</small><em>MASTER</em></div><div><span>Manager</span><p>Assign jobs and monitor the team.</p></div><div><span>Worker</span><p>See and update assigned jobs only.</p></div></div><div className="invite-row"><label>Staff name<input placeholder="e.g. Hafiz Rahman" /></label><label>Mobile number<input placeholder="01X-XXX XXXX" /></label><label>Role<select><option>Worker</option><option>Manager</option></select></label><button className="secondary">＋ Add another</button></div></> : <div className="solo-ready"><span>✓</span><div><b>Simple owner-worker account</b><p>No staff setup is required. You keep full access to jobs, customers, documents and accounting.</p></div></div>}</div>}
+        {step === 4 && <div className="onboarding-form"><span className="eyebrow">STEP 4 · ACCOUNTING DOCUMENTS</span><h2>Set your document defaults</h2><p>These details automatically appear on quotations, invoices and payment receipts.</p><div className="document-setup"><div className="mini-doc"><header><span className="brand-mark">K</span><b>AHMAD TEKNIK SERVICES</b><em>INVOICE</em></header><p>Company address · Phone · Registration no.</p><hr/><small>Customer details and service items</small><footer>TOTAL&nbsp;&nbsp; RM0.00</footer></div><div className="document-options"><label>Template style<select><option>Professional blue</option><option>Clean black & white</option><option>Forest green</option></select></label><label>Default payment terms<select><option>Immediately after job</option><option>Within 3 days</option><option>Within 30 days</option></select></label><label>Quotation prefix<input defaultValue="Q" /></label><label>Invoice prefix<input defaultValue="INV" /></label><label>Receipt prefix<input defaultValue="RCP" /></label><button className="upload-button">＋ Upload company logo</button></div></div><div className="setup-review"><span>✓</span><div><b>Ready to start</b><p>Profile, Team accounts, Accounting & templates, and Job status will appear in your navigation bar.</p></div></div></div>}
+        <footer className="onboarding-actions"><button className="secondary" disabled={step === 1} onClick={() => setStep(value => value - 1)}>Back</button><span>Step {step} of 4</span>{step < 4 ? <button className="primary" onClick={() => setStep(value => value + 1)}>Continue</button> : <button className="primary" onClick={finish}>Create my workspace →</button>}</footer>
+      </div>
+    </section>
+  </div>;
+}
 
 function HomeView({ setSheet, credits, paymentReminder }: { setSheet: (s: Sheet) => void; credits: number; paymentReminder: { due: string; terms: string } | null }) {
   return <>
