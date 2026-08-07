@@ -12,7 +12,8 @@
     "test": "pnpm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "WRANGLER_LOG_PATH=.wrangler/logs/db-migrate.log wrangler d1 migrations apply DB --local --persist-to .wrangler/state"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

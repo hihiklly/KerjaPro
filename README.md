@@ -24,7 +24,21 @@ The current interface contains realistic demo data so the primary journeys can b
 - Configuration-driven PAYG bundles and Standard/Pro plan display
 - Credit reservation, idempotency, commit/reversal and admin-reason domain rules
 
-The current UI uses demo records. D1 migrations define the durable tenant-owned model, but production CRUD endpoints, provider-backed transcription/AI, and real billing webhooks remain activation work.
+The current UI uses demo records. D1 migrations define the durable tenant-owned model, and tenant-scoped API routes now cover workspace setup plus customer, job, and document persistence. Wiring the demo UI to those routes, provider-backed transcription/AI, and real billing webhooks remain activation work.
+
+## Persistence API
+
+All routes use the ChatGPT authentication headers and resolve the caller's active business membership on the server. IDs supplied for related records are checked against that same business account.
+
+- `GET|POST /api/workspace` — retrieve or create the authenticated user's workspace
+- `GET|POST /api/customers` — list/search or create customers
+- `GET|PATCH /api/customers/:id` — retrieve customer history or update a customer
+- `GET|POST /api/jobs` — filter/list or create jobs
+- `GET|PATCH /api/jobs/:id` — retrieve a job workflow or update its state
+- `GET|POST /api/documents` — filter/list or atomically create a document, version, and line/report records
+- `GET|POST|PATCH /api/documents/:id` — retrieve the complete document, save a draft version, or confirm/void it
+
+Money fields use integer minor units and quantities use integer milli-units, matching the Drizzle schema. Collection endpoints accept `limit` (maximum 100) and `offset`; customers also accept `q`, while jobs and documents accept their relevant status/kind and relationship filters.
 
 ## Local development
 
@@ -58,7 +72,7 @@ Voice recording/transcript controls are a provider-ready interface. They do not 
 
 1. Select and verify a Malaysia-supported recurring-payment provider; implement and audit its webhook adapter.
 2. Configure an AI/transcription provider, structured schemas, retention controls, cost tracking, timeouts, and failure reversal.
-3. Add server handlers for CRUD/PDF generation against D1/R2 and run tenant-isolation integration tests.
+3. Connect the client interface to the D1 API routes, add server-side PDF/R2 handlers, and run tenant-isolation integration tests.
 4. Complete legal review of Privacy Policy, Terms, Malaysia PDPA handling, tax wording, and e-Invoice boundaries.
 5. Configure monitoring, rate limits, backups, migration rollout, account export/deletion, and incident response.
 
