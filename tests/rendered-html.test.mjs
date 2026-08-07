@@ -83,3 +83,15 @@ test("managers can assign jobs with tenant-owned history", async () => {
   assert.match(schema, /assignedByMemberId/);
   assert.match(schema, /\["owner", "manager", "worker"\]/);
 });
+
+test("customer payment methods and team job compensation are implemented", async () => {
+  const fs = await import("node:fs/promises");
+  const [app, schema] = await Promise.all([fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"), fs.readFile(new URL("../db/schema.ts", import.meta.url), "utf8")]);
+  for (const label of ["Bank transfer", "DuitNow", "Touch ’n Go eWallet QR", "Commission & pay", "Ready to approve", "Schedule"]) assert.match(app, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(app, /PAYMENT OPTIONS/);
+  assert.match(app, /Worker pay/);
+  assert.match(schema, /paymentMethods/);
+  assert.match(schema, /staffPayRules/);
+  assert.match(schema, /jobCompensations/);
+  assert.match(schema, /pending_completion/);
+});
