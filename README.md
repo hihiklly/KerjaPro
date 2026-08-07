@@ -11,7 +11,7 @@ Malaysia-first, mobile-first daily work assistant for solo tradesmen. The app co
 - Immutable AI Credit ledger with idempotency keys and separate credit sources
 - ChatGPT dispatch authentication boundary for the hosted private application
 
-The current interface contains realistic demo data so the primary journeys can be evaluated immediately. D1/R2 declarations and the complete relational schema are included; hosted Sites provisions the backing resources.
+The main workspace, customer, job, and document screens read from the tenant-scoped API and render explicit empty states when D1 has no records. D1/R2 declarations and the complete relational schema are included; hosted Sites provisions the backing resources.
 
 ## Implemented product journeys
 
@@ -24,7 +24,7 @@ The current interface contains realistic demo data so the primary journeys can b
 - Configuration-driven PAYG bundles and Standard/Pro plan display
 - Credit reservation, idempotency, commit/reversal and admin-reason domain rules
 
-The current UI uses demo records. D1 migrations define the durable tenant-owned model, and tenant-scoped API routes now cover workspace setup plus customer, job, and document persistence. Wiring the demo UI to those routes, provider-backed transcription/AI, and real billing webhooks remain activation work.
+Workspace onboarding persists through the API, and the main customer, job, and document lists use the durable tenant-owned model. Provider-backed transcription/AI, service-catalog/settings routes, mutation forms for every workflow, and real billing webhooks remain activation work.
 
 ## Persistence API
 
@@ -72,7 +72,7 @@ Voice recording/transcript controls are a provider-ready interface. They do not 
 
 1. Select and verify a Malaysia-supported recurring-payment provider; implement and audit its webhook adapter.
 2. Configure an AI/transcription provider, structured schemas, retention controls, cost tracking, timeouts, and failure reversal.
-3. Connect the client interface to the D1 API routes, add server-side PDF/R2 handlers, and run tenant-isolation integration tests.
+3. Complete the remaining client mutation forms, add server-side PDF/R2 handlers, and run tenant-isolation integration tests.
 4. Complete legal review of Privacy Policy, Terms, Malaysia PDPA handling, tax wording, and e-Invoice boundaries.
 5. Configure monitoring, rate limits, backups, migration rollout, account export/deletion, and incident response.
 

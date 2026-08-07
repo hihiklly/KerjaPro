@@ -1,29 +1,20 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatMoney, productConfig } from "./product-config";
 
 type Tab = "home" | "jobs" | "customers" | "documents" | "more";
 type Sheet = null | "create" | "quote" | "report" | "invoice" | "receipt" | "accounting" | "register" | "catalog" | "analyze" | "credits" | "customer" | "job" | "team";
 
-const customers = [
-  { initials: "JL", name: "Jason Lim", phone: "012-884 2391", address: "Taman Molek, Johor Bahru", jobs: 3, color: "blue" },
-  { initials: "NA", name: "Nur Aina", phone: "017-602 1184", address: "Bandar Baru Uda, Johor Bahru", jobs: 1, color: "gold" },
-  { initials: "MR", name: "Mr Ravi", phone: "019-331 4780", address: "Permas Jaya, Masai", jobs: 2, color: "green" },
-];
+type ApiCustomer = { id: string; name: string; phone: string; serviceAddress: string };
+type ApiJob = { job: { id: string; jobNumber: string; request: string; appointmentAt: string | null; status: string }; customer: ApiCustomer };
+type ApiDocument = { document: { id: string; kind: string; documentNumber: string; status: string; totalMinor: number; currency: string; createdAt: string }; customer: ApiCustomer };
+type Workspace = { business: { name: string; ownerName: string }; membership: { role: string } };
 
-const jobs = [
-  { id: "JOB-2026-0048", title: "2 units not cold", customer: "Jason Lim", time: "Today, 2:30 PM", status: "Confirmed", tone: "blue", value: "RM350" },
-  { id: "JOB-2026-0047", title: "Kitchen socket replacement", customer: "Nur Aina", time: "Tomorrow, 10:00 AM", status: "New", tone: "amber", value: "—" },
-  { id: "JOB-2026-0046", title: "Aircon chemical wash", customer: "Mr Ravi", time: "5 Aug 2026", status: "Completed", tone: "green", value: "RM180" },
-];
+type AppData = { workspace: Workspace | null; customers: ApiCustomer[]; jobs: ApiJob[]; documents: ApiDocument[] };
+type OnboardingPayload = { businessType: "company" | "individual"; name: string; ownerName: string; masterRole: "boss" | "owner_worker"; phone: string; email?: string; registrationNo?: string; address?: string };
 
-const documents = [
-  { type: "Quotation", no: "Q-2026-0041", who: "Jason Lim", date: "Today, 9:42 AM", amount: "RM350.00", status: "Draft", icon: "Q" },
-  { type: "Invoice", no: "INV-2026-0028", who: "Mr Ravi", date: "5 Aug 2026", amount: "RM180.00", status: "Paid", icon: "I" },
-  { type: "Work Report", no: "WR-2026-0019", who: "Mr Ravi", date: "5 Aug 2026", amount: "", status: "Confirmed", icon: "✓" },
-  { type: "Payment Receipt", no: "RCP-2026-0017", who: "Nur Aina", date: "4 Aug 2026", amount: "RM250.00", status: "Paid", icon: "R" },
-];
+const emptyData: AppData = { workspace: null, customers: [], jobs: [], documents: [] };
 
 const savedServices = [
   { code: "AC-SVC", category: "Aircon", name: "Standard aircon service", unit: "unit", price: 80 },
@@ -35,15 +26,66 @@ const savedServices = [
 
 export default function TradeApp() {
   const [tab, setTab] = useState<Tab>("home");
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [data, setData] = useState<AppData>(emptyData);
+  const [dataState, setDataState] = useState<"loading" | "ready" | "error">("loading");
+  const [dataError, setDataError] = useState("");
+  const [todayLabel, setTodayLabel] = useState("");
   const [sheet, setSheet] = useState<Sheet>(null);
   const [credits, setCredits] = useState(27);
   const [toast, setToast] = useState("");
   const [query, setQuery] = useState("");
   const [quoteStep, setQuoteStep] = useState<"input" | "generating" | "review" | "confirmed">("input");
-  const [input, setInput] = useState("Customer at Taman Molek. Two aircons not cold. Inspection RM50, chemical wash RM150 each if approved. 30 days workmanship warranty.");
+  const [input, setInput] = useState("");
   const [paymentReminder, setPaymentReminder] = useState<{ due: string; terms: string } | null>(null);
   const generationLock = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTodayLabel(new Intl.DateTimeFormat("en-MY", { dateStyle: "full" }).format(new Date()));
+    async function load() {
+      setDataState("loading");
+      try {
+        const workspaceResponse = await fetch("/api/workspace", { cache: "no-store" });
+        if (workspaceResponse.status === 404) {
+          if (!cancelled) {
+            setData(emptyData);
+            setShowOnboarding(true);
+            setDataState("ready");
+          }
+          return;
+        }
+        const workspacePayload = await readApi<{ workspace: Workspace | null }>(workspaceResponse);
+        if (!workspacePayload.workspace) {
+          if (!cancelled) {
+            setData(emptyData);
+            setShowOnboarding(true);
+            setDataState("ready");
+          }
+          return;
+        }
+        const [customersPayload, jobsPayload, documentsPayload] = await Promise.all([
+          fetch("/api/customers?limit=100", { cache: "no-store" }).then(response => readApi<{ customers: ApiCustomer[] }>(response)),
+          fetch("/api/jobs?limit=100", { cache: "no-store" }).then(response => readApi<{ jobs: ApiJob[] }>(response)),
+          fetch("/api/documents?limit=100", { cache: "no-store" }).then(response => readApi<{ documents: ApiDocument[] }>(response)),
+        ]);
+        if (!cancelled) {
+          setData({ workspace: workspacePayload.workspace, customers: customersPayload.customers, jobs: jobsPayload.jobs, documents: documentsPayload.documents });
+          setShowOnboarding(false);
+          setDataError("");
+          setDataState("ready");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setData(emptyData);
+          setDataError(error instanceof Error ? error.message : "Could not load workspace data");
+          setDataState("error");
+        }
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, []);
 
   const notify = (message: string) => {
     setToast(message);
@@ -51,7 +93,9 @@ export default function TradeApp() {
   };
 
   const title = ({ home: "Overview", jobs: "Jobs", customers: "Customers", documents: "Sales & payments", more: "Business settings" } as const)[tab];
-  const filteredCustomers = useMemo(() => customers.filter(c => `${c.name} ${c.phone} ${c.address}`.toLowerCase().includes(query.toLowerCase())), [query]);
+  const filteredCustomers = useMemo(() => data.customers.filter(customer => `${customer.name} ${customer.phone} ${customer.serviceAddress}`.toLowerCase().includes(query.toLowerCase())), [data.customers, query]);
+  const businessName = data.workspace?.business.name ?? "KerjaPro workspace";
+  const ownerName = data.workspace?.business.ownerName ?? "Account owner";
 
   function generateQuote() {
     if (generationLock.current) return;
@@ -65,6 +109,16 @@ export default function TradeApp() {
     }, 900);
   }
 
+  async function createWorkspace(payload: OnboardingPayload) {
+    const response = await fetch("/api/workspace", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+    const result = await readApi<{ workspace: Workspace }>(response);
+    setData({ ...emptyData, workspace: result.workspace });
+    setDataError("");
+    setDataState("ready");
+    setShowOnboarding(false);
+    notify("Welcome to your KerjaPro workspace");
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -72,22 +126,22 @@ export default function TradeApp() {
         <nav aria-label="Main navigation">
           <span className="nav-section">DAILY WORK</span>
           <NavButton active={tab === "home"} icon="⌂" label="Overview" onClick={() => setTab("home")} />
-          <NavButton active={tab === "jobs"} icon="▣" label="Jobs" badge="3" onClick={() => setTab("jobs")} />
+          <NavButton active={tab === "jobs"} icon="▣" label="Jobs" badge={data.jobs.length ? String(data.jobs.length) : undefined} onClick={() => setTab("jobs")} />
           <NavButton active={tab === "customers"} icon="♙" label="Customers" onClick={() => setTab("customers")} />
           <span className="nav-section">MONEY</span>
-          <NavButton active={tab === "documents"} icon="▤" label="Sales & payments" badge="1" onClick={() => setTab("documents")} />
+          <NavButton active={tab === "documents"} icon="▤" label="Sales & payments" badge={data.documents.length ? String(data.documents.length) : undefined} onClick={() => setTab("documents")} />
           <span className="nav-section">BUSINESS</span>
           <NavButton active={false} icon="♙" label="Team" onClick={() => setSheet("team")} />
           <NavButton active={false} icon="▦" label="Services & prices" onClick={() => setSheet("catalog")} />
           <NavButton active={tab === "more"} icon="⚙" label="Business settings" onClick={() => setTab("more")} />
         </nav>
-        <button className="profile-row" onClick={() => setSheet("register")} aria-label="Open profile"><span className="avatar">AT</span><span><strong>Ahmad Teknik</strong><small>OWNER / MASTER ACCOUNT</small></span><em>›</em></button>
+        <button className="profile-row" onClick={() => setSheet("register")} aria-label="Open profile"><span className="avatar">{initials(businessName)}</span><span><strong>{businessName}</strong><small>{accountRoleLabel(data.workspace?.membership.role)}</small></span><em>›</em></button>
       </aside>
 
       <section className="main-area">
         <header className="topbar">
           <div className="mobile-brand"><Brand /></div>
-          <div><h1>{title}</h1><p>{tab === "home" ? "Friday, 7 August" : subtitle(tab)}</p></div>
+          <div><h1>{title}</h1><p>{tab === "home" ? todayLabel : subtitle(tab)}</p></div>
           <div className="top-actions">
             <button className="credit-pill" onClick={() => setSheet("credits")}><span>✦</span><strong>{credits}</strong> AI Credits</button>
             <button className="bell" aria-label="Notifications">♢<i /></button>
@@ -96,10 +150,11 @@ export default function TradeApp() {
         </header>
 
         <div className="content">
-          {tab === "home" && <HomeView setSheet={setSheet} credits={credits} paymentReminder={paymentReminder} />}
-          {tab === "jobs" && <JobsView setSheet={setSheet} />}
-          {tab === "customers" && <CustomersView query={query} setQuery={setQuery} items={filteredCustomers} setSheet={setSheet} />}
-          {tab === "documents" && <DocumentsView notify={notify} setSheet={setSheet} />}
+          {dataState === "error" && <DataNotice title="Could not load your workspace" detail={dataError} />}
+          {dataState !== "error" && tab === "home" && <HomeView setSheet={setSheet} credits={credits} paymentReminder={paymentReminder} jobs={data.jobs} ownerName={ownerName} loading={dataState === "loading"} />}
+          {dataState !== "error" && tab === "jobs" && <JobsView setSheet={setSheet} jobs={data.jobs} loading={dataState === "loading"} />}
+          {dataState !== "error" && tab === "customers" && <CustomersView query={query} setQuery={setQuery} items={filteredCustomers} jobs={data.jobs} setSheet={setSheet} loading={dataState === "loading"} />}
+          {dataState !== "error" && tab === "documents" && <DocumentsView notify={notify} setSheet={setSheet} documents={data.documents} loading={dataState === "loading"} />}
           {tab === "more" && <MoreView credits={credits} setSheet={setSheet} />}
         </div>
       </section>
@@ -112,7 +167,7 @@ export default function TradeApp() {
         <NavButton active={tab === "documents"} icon="▤" label="Sales" onClick={() => setTab("documents")} />
       </nav>
 
-      {showOnboarding && <FirstRunOnboarding finish={() => { setShowOnboarding(false); notify("Welcome to your KerjaPro workspace"); }} />}
+      {showOnboarding && <FirstRunOnboarding finish={createWorkspace} />}
 
       {sheet && <div className="overlay" onMouseDown={e => e.target === e.currentTarget && setSheet(null)}>
         <section className={`sheet ${sheet === "quote" ? "wide" : ""}`} role="dialog" aria-modal="true">
@@ -141,9 +196,17 @@ function Brand() { return <div className="brand"><span className="brand-mark">K<
 function NavButton({ active, icon, label, badge, onClick }: { active: boolean; icon: string; label: string; badge?: string; onClick: () => void }) { return <button className={`nav-button ${active ? "active" : ""}`} onClick={onClick}><span>{icon}</span><b>{label}</b>{badge && <i>{badge}</i>}</button>; }
 function subtitle(tab: Tab) { return ({ jobs: "Track every job from new request to payment", customers: "Customer details and complete work history", documents: "Quotes, invoices, receipts and money collected", more: "Company, team, document and account setup", home: "" } as const)[tab]; }
 
-function FirstRunOnboarding({ finish }: { finish: () => void }) {
+function FirstRunOnboarding({ finish }: { finish: (payload: OnboardingPayload) => Promise<void> }) {
   const [step, setStep] = useState(1);
   const [businessType, setBusinessType] = useState<"team" | "solo">("team");
+  const [ownerName, setOwnerName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const [registrationNo, setRegistrationNo] = useState("");
+  const [address, setAddress] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const steps = ["Your account", "Business profile", "Team", "Documents"];
   return <div className="onboarding-overlay">
     <section className="onboarding-shell" role="dialog" aria-modal="true" aria-label="New user registration">
@@ -156,21 +219,20 @@ function FirstRunOnboarding({ finish }: { finish: () => void }) {
       <div className="onboarding-main">
         <div className="onboarding-mobile-head"><Brand /><span>Step {step} of 4</span></div>
         <div className="onboarding-progress"><i style={{width:`${step * 25}%`}} /></div>
-        {step === 1 && <div className="onboarding-form"><span className="eyebrow">STEP 1 · MASTER ACCOUNT</span><h2>Create your KerjaPro account</h2><p>This person can monitor the entire business, invite staff and view accounting records.</p><div className="form-grid onboarding-fields"><label>Full name<input defaultValue="Ahmad bin Ismail" /></label><label>Mobile / WhatsApp<input defaultValue="012-345 6789" /></label><label>Email address<input type="email" defaultValue="ahmad@example.com" /></label><label>Password<input type="password" defaultValue="password123" /></label></div><label className="check"><input type="checkbox" defaultChecked /> I agree to the Terms of Service and Privacy Policy.</label></div>}
-        {step === 2 && <div className="onboarding-form"><span className="eyebrow">STEP 2 · BUSINESS PROFILE</span><h2>Tell us how you work</h2><p>Choose the setup that matches your business. You can change company details later from Profile.</p><div className="business-choice"><button className={businessType === "team" ? "active" : ""} onClick={() => setBusinessType("team")}><span>▦</span><b>Company with a team</b><small>Owner or manager monitors all staff, jobs and documents.</small><em>MASTER + STAFF ACCOUNTS</em></button><button className={businessType === "solo" ? "active" : ""} onClick={() => setBusinessType("solo")}><span>♙</span><b>Individual business</b><small>One owner-worker manages everything in one account.</small><em>ONE PERSON ACCOUNT</em></button></div><div className="form-grid onboarding-fields"><label>Business name<input defaultValue="Ahmad Teknik Services" /></label><label>Business category<select defaultValue="aircon"><option value="aircon">Air-conditioning</option><option value="electrical">Electrical</option><option value="plumbing">Plumbing</option><option value="renovation">Renovation</option><option value="other">Other service</option></select></label><label>SSM registration number<input placeholder="Optional" /></label><label>Business phone<input defaultValue="012-345 6789" /></label><label className="full">Business address<textarea defaultValue="12 Jalan Molek 2/1, Taman Molek, 81100 Johor Bahru, Johor" /></label></div></div>}
-        {step === 3 && <div className="onboarding-form"><span className="eyebrow">STEP 3 · TEAM ACCOUNTS</span><h2>{businessType === "team" ? "Who helps run the business?" : "Your solo workspace is ready"}</h2><p>{businessType === "team" ? "Add staff now or skip and invite them later from Team accounts." : "You can switch to a team business later if you hire staff."}</p>{businessType === "team" ? <><div className="role-summary"><div><span className="customer-avatar">AM</span><b>Ahmad bin Ismail</b><small>Owner · Full company access</small><em>MASTER</em></div><div><span>Manager</span><p>Assign jobs and monitor the team.</p></div><div><span>Worker</span><p>See and update assigned jobs only.</p></div></div><div className="invite-row"><label>Staff name<input placeholder="e.g. Hafiz Rahman" /></label><label>Mobile number<input placeholder="01X-XXX XXXX" /></label><label>Role<select><option>Worker</option><option>Manager</option></select></label><button className="secondary">＋ Add another</button></div></> : <div className="solo-ready"><span>✓</span><div><b>Simple owner-worker account</b><p>No staff setup is required. You keep full access to jobs, customers, documents and accounting.</p></div></div>}</div>}
-        {step === 4 && <div className="onboarding-form"><span className="eyebrow">STEP 4 · ACCOUNTING DOCUMENTS</span><h2>Set your document defaults</h2><p>These details automatically appear on quotations, invoices and payment receipts.</p><div className="document-setup"><div className="mini-doc"><header><span className="brand-mark">K</span><b>AHMAD TEKNIK SERVICES</b><em>INVOICE</em></header><p>Company address · Phone · Registration no.</p><hr/><small>Customer details and service items</small><footer>TOTAL&nbsp;&nbsp; RM0.00</footer></div><div className="document-options"><label>Template style<select><option>Professional blue</option><option>Clean black & white</option><option>Forest green</option></select></label><label>Default payment terms<select><option>Immediately after job</option><option>Within 3 days</option><option>Within 30 days</option></select></label><label>Quotation prefix<input defaultValue="Q" /></label><label>Invoice prefix<input defaultValue="INV" /></label><label>Receipt prefix<input defaultValue="RCP" /></label><button className="upload-button">＋ Upload company logo</button></div></div><div className="setup-review"><span>✓</span><div><b>Ready to start</b><p>Daily work, money and business setup are now grouped clearly in the navigation.</p></div></div></div>}
-        <footer className="onboarding-actions"><button className="secondary" disabled={step === 1} onClick={() => setStep(value => value - 1)}>Back</button><span>Step {step} of 4</span>{step < 4 ? <button className="primary" onClick={() => setStep(value => value + 1)}>Continue</button> : <button className="primary" onClick={finish}>Create my workspace →</button>}</footer>
+        {step === 1 && <div className="onboarding-form"><span className="eyebrow">STEP 1 · MASTER ACCOUNT</span><h2>Create your KerjaPro account</h2><p>This person can monitor the entire business, invite staff and view accounting records.</p><div className="form-grid onboarding-fields"><label>Full name<input value={ownerName} onChange={event => setOwnerName(event.target.value)} placeholder="Your full name" /></label><label>Mobile / WhatsApp<input value={phone} onChange={event => setPhone(event.target.value)} placeholder="01X-XXX XXXX" /></label><label>Email address<input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" /></label></div><label className="check"><input type="checkbox" defaultChecked /> I agree to the Terms of Service and Privacy Policy.</label></div>}
+        {step === 2 && <div className="onboarding-form"><span className="eyebrow">STEP 2 · BUSINESS PROFILE</span><h2>Tell us how you work</h2><p>Choose the setup that matches your business. You can change company details later from Profile.</p><div className="business-choice"><button className={businessType === "team" ? "active" : ""} onClick={() => setBusinessType("team")}><span>▦</span><b>Company with a team</b><small>Owner or manager monitors all staff, jobs and documents.</small><em>MASTER + STAFF ACCOUNTS</em></button><button className={businessType === "solo" ? "active" : ""} onClick={() => setBusinessType("solo")}><span>♙</span><b>Individual business</b><small>One owner-worker manages everything in one account.</small><em>ONE PERSON ACCOUNT</em></button></div><div className="form-grid onboarding-fields"><label>Business name<input value={businessName} onChange={event => setBusinessName(event.target.value)} placeholder="Your business name" /></label><label>Business category<select defaultValue="other"><option value="aircon">Air-conditioning</option><option value="electrical">Electrical</option><option value="plumbing">Plumbing</option><option value="renovation">Renovation</option><option value="other">Other service</option></select></label><label>SSM registration number<input value={registrationNo} onChange={event => setRegistrationNo(event.target.value)} placeholder="Optional" /></label><label>Business phone<input value={phone} onChange={event => setPhone(event.target.value)} placeholder="01X-XXX XXXX" /></label><label className="full">Business address<textarea value={address} onChange={event => setAddress(event.target.value)} placeholder="Business address" /></label></div></div>}
+        {step === 3 && <div className="onboarding-form"><span className="eyebrow">STEP 3 · TEAM ACCOUNTS</span><h2>{businessType === "team" ? "Who helps run the business?" : "Your solo workspace is ready"}</h2><p>{businessType === "team" ? "Add staff now or skip and invite them later from Team accounts." : "You can switch to a team business later if you hire staff."}</p>{businessType === "team" ? <><div className="role-summary"><div><span className="customer-avatar">{initials(ownerName)}</span><b>{ownerName}</b><small>Owner · Full company access</small><em>MASTER</em></div><div><span>Manager</span><p>Assign jobs and monitor the team.</p></div><div><span>Worker</span><p>See and update assigned jobs only.</p></div></div><div className="invite-row"><label>Staff name<input placeholder="Staff name" /></label><label>Mobile number<input placeholder="01X-XXX XXXX" /></label><label>Role<select><option>Worker</option><option>Manager</option></select></label><button className="secondary">＋ Add another</button></div></> : <div className="solo-ready"><span>✓</span><div><b>Simple owner-worker account</b><p>No staff setup is required. You keep full access to jobs, customers, documents and accounting.</p></div></div>}</div>}
+        {step === 4 && <div className="onboarding-form"><span className="eyebrow">STEP 4 · ACCOUNTING DOCUMENTS</span><h2>Set your document defaults</h2><p>These details automatically appear on quotations, invoices and payment receipts.</p><div className="document-setup"><div className="mini-doc"><header><span className="brand-mark">K</span><b>{businessName.toUpperCase()}</b><em>INVOICE</em></header><p>Company address · Phone · Registration no.</p><hr/><small>Customer details and service items</small><footer>TOTAL&nbsp;&nbsp; RM0.00</footer></div><div className="document-options"><label>Template style<select><option>Professional blue</option><option>Clean black & white</option><option>Forest green</option></select></label><label>Default payment terms<select><option>Immediately after job</option><option>Within 3 days</option><option>Within 30 days</option></select></label><label>Quotation prefix<input defaultValue="Q" /></label><label>Invoice prefix<input defaultValue="INV" /></label><label>Receipt prefix<input defaultValue="RCP" /></label><button className="upload-button">＋ Upload company logo</button></div></div><div className="setup-review"><span>✓</span><div><b>Ready to start</b><p>Daily work, money and business setup are now grouped clearly in the navigation.</p></div></div></div>}
+        <footer className="onboarding-actions"><button className="secondary" disabled={step === 1 || saving} onClick={() => setStep(value => value - 1)}>Back</button><span>{error || `Step ${step} of 4`}</span>{step < 4 ? <button className="primary" disabled={(step === 1 && (!ownerName.trim() || !phone.trim())) || (step === 2 && !businessName.trim())} onClick={() => setStep(value => value + 1)}>Continue</button> : <button className="primary" disabled={saving} onClick={async () => { setSaving(true); setError(""); try { await finish({ businessType: businessType === "team" ? "company" : "individual", name: businessName.trim(), ownerName: ownerName.trim(), masterRole: businessType === "team" ? "boss" : "owner_worker", phone: phone.trim(), email: email.trim() || undefined, registrationNo: registrationNo.trim() || undefined, address: address.trim() || undefined }); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not create workspace"); setSaving(false); } }}>{saving ? "Creating…" : "Create my workspace →"}</button>}</footer>
       </div>
     </section>
   </div>;
 }
 
-function HomeView({ setSheet, credits, paymentReminder }: { setSheet: (s: Sheet) => void; credits: number; paymentReminder: { due: string; terms: string } | null }) {
+function HomeView({ setSheet, credits, paymentReminder, jobs, ownerName, loading }: { setSheet: (s: Sheet) => void; credits: number; paymentReminder: { due: string; terms: string } | null; jobs: ApiJob[]; ownerName: string; loading: boolean }) {
   return <>
-    <section className="welcome"><div><p>Good morning, Ahmad <span>👋</span></p><h2>Follow these steps for every job</h2></div><div className="plan-mini"><span>STANDARD</span><strong>{credits} <small>credits left</small></strong></div></section>
+    <section className="welcome"><div><p>Welcome, {ownerName} <span>👋</span></p><h2>{loading ? "Loading your workspace…" : jobs.length ? "Here’s your latest work" : "Start by adding your first customer or job"}</h2></div><div className="plan-mini"><span>STANDARD</span><strong>{credits} <small>credits left</small></strong></div></section>
     <section className="sop-panel"><div className="sop-head"><div><span className="eyebrow">SIMPLE JOB SOP</span><h3>Customer request → money collected</h3><p>KerjaPro keeps every step and document together.</p></div><button onClick={() => setSheet("job")}>Continue current job →</button></div><div className="sop-flow"><button onClick={() => setSheet("customer")}><i>1</i><span><b>Customer</b><small>Name, phone, address</small></span><em>✓</em></button><button onClick={() => setSheet("job")}><i>2</i><span><b>Job</b><small>Problem and appointment</small></span><em>✓</em></button><button className="current" onClick={() => setSheet("quote")}><i>3</i><span><b>Quotation</b><small>Price before work</small></span><em>DO NOW</em></button><button onClick={() => setSheet("job")}><i>4</i><span><b>Do & finish work</b><small>Report what was done</small></span></button><button onClick={() => setSheet("invoice")}><i>5</i><span><b>Invoice</b><small>Ask for payment</small></span></button><button onClick={() => setSheet("receipt")}><i>6</i><span><b>Payment receipt</b><small>Confirm money received</small></span></button></div></section>
-    <div className="next-action"><span>3</span><div><b>Your next step: confirm Jason Lim’s quotation</b><small>Check scope and price before starting work.</small></div><button onClick={() => setSheet("quote")}>Open quotation</button></div>
     <div className="home-section-title"><h3>Quick actions</h3><small>Or start anywhere</small></div>
     <section className="quick-grid">
       <button className="quick-card voice" onClick={() => setSheet("quote")}><span className="quick-icon">●</span><span><strong>Speak a job</strong><small>Talk or paste WhatsApp text</small></span><i>→</i></button>
@@ -180,30 +242,46 @@ function HomeView({ setSheet, credits, paymentReminder }: { setSheet: (s: Sheet)
     </section>
     <div className="dashboard-grid">
       <section className="panel followups"><PanelTitle title="Follow-ups" action="See all" />
-        <div className="follow-row overdue"><span className="date-box"><b>07</b><small>AUG</small></span><div><span className="status-dot">OVERDUE</span><strong>Follow up quotation</strong><small>Jason Lim · Q-2026-0041</small></div><button>›</button></div>
-        {paymentReminder ? <div className="follow-row"><span className="date-box"><b>{paymentReminder.due.split(" ")[0]}</b><small>{paymentReminder.due.split(" ")[1]?.toUpperCase()}</small></span><div><span className="status-dot today">PAYMENT</span><strong>Collect payment from Jason Lim</strong><small>{paymentReminder.terms} · JOB-2026-0048</small></div><button>›</button></div> : <div className="follow-row"><span className="date-box"><b>07</b><small>AUG</small></span><div><span className="status-dot today">TODAY</span><strong>Collect payment</strong><small>Mr Ravi · INV-2026-0028</small></div><button>›</button></div>}
+        {paymentReminder ? <div className="follow-row"><span className="date-box"><b>{paymentReminder.due.split(" ")[0]}</b><small>{paymentReminder.due.split(" ")[1]?.toUpperCase()}</small></span><div><span className="status-dot today">PAYMENT</span><strong>Collect payment</strong><small>{paymentReminder.terms}</small></div><button>›</button></div> : <DataNotice title="No follow-ups yet" detail="Follow-ups created from your jobs will appear here." compact />}
       </section>
       <section className="panel usage"><PanelTitle title="AI Credit usage" action="View details" /><div className="usage-head"><span><b>18</b> used this month</span><strong>40 included</strong></div><div className="progress"><i style={{ width: "45%" }} /></div><p><span>✦</span> Your credits refresh on <b>1 September</b></p><button className="secondary" onClick={() => setSheet("credits")}>Buy more credits</button></section>
     </div>
-    <section className="panel recent"><PanelTitle title="Recent work" action="View all" />{jobs.map(j => <div className="work-row" key={j.id}><span className={`work-icon ${j.tone}`}>⌁</span><div><strong>{j.title}</strong><small>{j.customer} · {j.id}</small></div><span><b>{j.value}</b><small>{j.time}</small></span><em className={j.tone}>{j.status}</em><button>›</button></div>)}</section>
+    <section className="panel recent"><PanelTitle title="Recent work" action="View all" />{loading ? <DataNotice title="Loading jobs…" compact /> : jobs.length ? jobs.slice(0, 5).map(({ job, customer }) => <div className="work-row" key={job.id}><span className={`work-icon ${statusTone(job.status)}`}>⌁</span><div><strong>{job.request}</strong><small>{customer.name} · {job.jobNumber}</small></div><span><b>—</b><small>{formatDate(job.appointmentAt)}</small></span><em className={statusTone(job.status)}>{statusLabel(job.status)}</em><button>›</button></div>) : <DataNotice title="No jobs yet" detail="Create a job to see it here." compact />}</section>
     <div className="trust-note"><span>▣</span><div><strong>Your customer data stays private</strong><p>AI only creates drafts. You always review and confirm before making a document.</p></div><a href="#">How we protect your data →</a></div>
   </>;
 }
 
 function PanelTitle({ title, action }: { title: string; action: string }) { return <div className="panel-title"><h3>{title}</h3><button>{action} →</button></div>; }
 
-function JobsView({ setSheet }: { setSheet: (s: Sheet) => void }) { return <section className="page-stack"><div className="filter-row"><div className="search">⌕ <input placeholder="Search job, customer or address" /></div><button className="primary" onClick={() => setSheet("quote")}>＋ New job</button></div><div className="chips"><button className="active">All <b>8</b></button><button>New <b>2</b></button><button>Confirmed <b>3</b></button><button>In progress <b>1</b></button><button>Completed</button></div><section className="panel list-panel">{jobs.concat([{ id: "JOB-2026-0045", title: "Ceiling fan inspection", customer: "Siti Mariam", time: "3 Aug 2026", status: "New", tone: "amber", value: "—" }]).map(j => <button className="job-card" key={j.id} onClick={() => setSheet("job")}><span className={`work-icon ${j.tone}`}>⌁</span><span><small>{j.id}</small><strong>{j.title}</strong><em>{j.customer} · {j.time}</em></span><span><b>{j.value}</b><i className={j.tone}>{j.status}</i></span><b>›</b></button>)}</section></section>; }
+function DataNotice({ title, detail, compact = false }: { title: string; detail?: string; compact?: boolean }) { return <div className={`data-notice ${compact ? "compact" : ""}`}><strong>{title}</strong>{detail && <small>{detail}</small>}</div>; }
 
-function CustomersView({ query, setQuery, items, setSheet }: { query: string; setQuery: (s: string) => void; items: typeof customers; setSheet: (s: Sheet) => void }) { return <section className="page-stack"><div className="filter-row"><div className="search">⌕ <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, phone or address" /></div><button className="primary" onClick={() => setSheet("customer")}>＋ New customer</button></div><div className="customer-grid">{items.map(c => <button className="customer-card" key={c.phone} onClick={() => setSheet("customer")}><span className={`customer-avatar ${c.color}`}>{c.initials}</span><span><strong>{c.name}</strong><small>{c.phone}</small><small>⌖ {c.address}</small></span><em>{c.jobs} {c.jobs === 1 ? "job" : "jobs"}</em><b>›</b></button>)}</div></section>; }
+async function readApi<T>(response: Response): Promise<T> {
+  const payload = await response.json().catch(() => ({})) as T & { error?: string };
+  if (!response.ok) throw new Error(payload.error ?? `API request failed (${response.status})`);
+  return payload;
+}
 
-function DocumentsView({ notify, setSheet }: { notify: (s: string) => void; setSheet: (s: Sheet) => void }) {
+function initials(value: string) { return value.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase()).join("") || "KP"; }
+function statusLabel(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, character => character.toUpperCase()); }
+function statusTone(status: string) { return status === "completed" || status === "confirmed" ? "green" : status === "new" || status === "draft" ? "amber" : "blue"; }
+function formatDate(value: string | null) { if (!value) return "Not scheduled"; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-MY", { dateStyle: "medium", timeStyle: "short" }).format(date); }
+function documentKindLabel(kind: string) { return kind === "quotation" ? "Quotation" : kind === "invoice" ? "Invoice" : "Work Report"; }
+function accountRoleLabel(role?: string) { return role === "owner" || !role ? "OWNER / MASTER ACCOUNT" : `${role.toUpperCase()} ACCOUNT`; }
+
+function JobsView({ setSheet, jobs, loading }: { setSheet: (s: Sheet) => void; jobs: ApiJob[]; loading: boolean }) { const counts = (status: string) => jobs.filter(item => item.job.status === status).length; return <section className="page-stack"><div className="filter-row"><div className="search">⌕ <input placeholder="Search job, customer or address" /></div><button className="primary" onClick={() => setSheet("quote")}>＋ New job</button></div><div className="chips"><button className="active">All <b>{jobs.length}</b></button><button>New <b>{counts("new")}</b></button><button>Confirmed <b>{counts("confirmed")}</b></button><button>In progress <b>{counts("in_progress")}</b></button><button>Completed <b>{counts("completed")}</b></button></div><section className="panel list-panel">{loading ? <DataNotice title="Loading jobs…" /> : jobs.length ? jobs.map(({ job, customer }) => <button className="job-card" key={job.id} onClick={() => setSheet("job")}><span className={`work-icon ${statusTone(job.status)}`}>⌁</span><span><small>{job.jobNumber}</small><strong>{job.request}</strong><em>{customer.name} · {formatDate(job.appointmentAt)}</em></span><span><b>—</b><i className={statusTone(job.status)}>{statusLabel(job.status)}</i></span><b>›</b></button>) : <DataNotice title="No jobs found" detail="Create your first job to begin tracking work." />}</section></section>; }
+
+function CustomersView({ query, setQuery, items, jobs, setSheet, loading }: { query: string; setQuery: (s: string) => void; items: ApiCustomer[]; jobs: ApiJob[]; setSheet: (s: Sheet) => void; loading: boolean }) { return <section className="page-stack"><div className="filter-row"><div className="search">⌕ <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, phone or address" /></div><button className="primary" onClick={() => setSheet("customer")}>＋ New customer</button></div><div className="customer-grid">{loading ? <DataNotice title="Loading customers…" /> : items.length ? items.map((customer, index) => { const jobCount = jobs.filter(item => item.job.id && item.customer.id === customer.id).length; return <button className="customer-card" key={customer.id} onClick={() => setSheet("customer")}><span className={`customer-avatar ${["blue", "gold", "green"][index % 3]}`}>{initials(customer.name)}</span><span><strong>{customer.name}</strong><small>{customer.phone}</small><small>⌖ {customer.serviceAddress}</small></span><em>{jobCount} {jobCount === 1 ? "job" : "jobs"}</em><b>›</b></button>; }) : <DataNotice title={query ? "No matching customers" : "No customers yet"} detail={query ? "Try another name, phone number, or address." : "Add your first customer to get started."} />}</div></section>; }
+
+function DocumentsView({ notify, setSheet, documents, loading }: { notify: (s: string) => void; setSheet: (s: Sheet) => void; documents: ApiDocument[]; loading: boolean }) {
   const [filter, setFilter] = useState("All");
-  const shown = filter === "All" ? documents : documents.filter(item => item.type.includes(filter === "Receipts" ? "Receipt" : filter.slice(0, -1)));
+  const kindByFilter: Record<string, string> = { Quotations: "quotation", Invoices: "invoice", "Work reports": "work_report" };
+  const shown = filter === "All" ? documents : documents.filter(item => item.document.kind === kindByFilter[filter]);
+  const totalMinor = documents.filter(item => item.document.kind === "invoice" && item.document.status === "confirmed").reduce((sum, item) => sum + item.document.totalMinor, 0);
   return <section className="page-stack sales-page">
-    <section className="money-strip"><div><span>COLLECTED THIS MONTH</span><strong>RM2,510</strong><small>From 7 paid invoices</small></div><div><span>WAITING FOR PAYMENT</span><strong>RM430</strong><small>1 invoice due today</small></div><button onClick={() => setSheet("receipt")}><b>＋ Record payment</b><small>Create a receipt after money is received</small></button></section>
-    <div className="sales-toolbar"><div className="section-tabs" role="tablist">{["All", "Quotations", "Invoices", "Receipts"].map(item => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div><button className="template-link" onClick={() => setSheet("accounting")}>⚙ Document templates</button><button className="primary" onClick={() => setSheet("create")}>＋ Create</button></div>
+    <section className="money-strip"><div><span>CONFIRMED INVOICES</span><strong>{formatMoney(totalMinor)}</strong><small>From {documents.filter(item => item.document.kind === "invoice" && item.document.status === "confirmed").length} invoices</small></div><div><span>DRAFT DOCUMENTS</span><strong>{documents.filter(item => item.document.status === "draft").length}</strong><small>Waiting for your review</small></div><button onClick={() => setSheet("receipt")}><b>＋ Record payment</b><small>Create a receipt after money is received</small></button></section>
+    <div className="sales-toolbar"><div className="section-tabs" role="tablist">{["All", "Quotations", "Invoices", "Work reports"].map(item => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div><button className="template-link" onClick={() => setSheet("accounting")}>⚙ Document templates</button><button className="primary" onClick={() => setSheet("create")}>＋ Create</button></div>
     <div className="search sales-search">⌕ <input placeholder="Search customer or document number" /></div>
-    <section className="panel list-panel"><div className="list-heading"><span>DOCUMENT</span><span>AMOUNT & DATE</span><span>STATUS</span><span>ACTION</span></div>{shown.map(d => <div className="document-row" key={d.no}><span className="doc-icon">{d.icon}</span><div><strong>{d.type}</strong><small>{d.no} · {d.who}</small></div><span><b>{d.amount || "—"}</b><small>{d.date}</small></span><em className={d.status === "Draft" ? "draft" : ""}>{d.status}</em><button onClick={() => { downloadDocumentPdf(d.no, d.type, d.who, d.amount); notify(`${d.no} PDF downloaded`); }}>↓ PDF</button></div>)}</section>
+    <section className="panel list-panel"><div className="list-heading"><span>DOCUMENT</span><span>AMOUNT & DATE</span><span>STATUS</span><span>ACTION</span></div>{loading ? <DataNotice title="Loading documents…" /> : shown.length ? shown.map(({ document, customer }) => { const type = documentKindLabel(document.kind); const amount = document.kind === "work_report" ? "" : formatMoney(document.totalMinor); return <div className="document-row" key={document.id}><span className="doc-icon">{document.kind === "quotation" ? "Q" : document.kind === "invoice" ? "I" : "✓"}</span><div><strong>{type}</strong><small>{document.documentNumber} · {customer.name}</small></div><span><b>{amount || "—"}</b><small>{formatDate(document.createdAt)}</small></span><em className={document.status === "draft" ? "draft" : ""}>{statusLabel(document.status)}</em><button onClick={() => { downloadDocumentPdf(document.documentNumber, type, customer.name, amount); notify(`${document.documentNumber} PDF downloaded`); }}>↓ PDF</button></div>; }) : <DataNotice title="No documents found" detail="Create a quotation, work report, or invoice to see it here." />}</section>
   </section>;
 }
 

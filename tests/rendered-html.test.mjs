@@ -16,6 +16,16 @@ test("renders the KerjaPro application shell", async () => {
   assert.doesNotMatch(html, /codex-preview/);
 });
 
+test("main workspace collections are loaded from local API routes", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"));
+  for (const route of ["/api/workspace", "/api/customers?limit=100", "/api/jobs?limit=100", "/api/documents?limit=100"]) {
+    assert.match(source, new RegExp(`fetch\\(\"${route.replace(/[?]/g, "\\?")}`));
+  }
+  assert.doesNotMatch(source, /const customers = \[/);
+  assert.doesNotMatch(source, /const jobs = \[/);
+  assert.doesNotMatch(source, /const documents = \[/);
+});
+
 test("financial and confirmation rules are source-enforced", async () => {
   const source = await import("node:fs/promises").then(fs => fs.readFile(new URL("../app/domain.ts", import.meta.url), "utf8"));
   assert.match(source, /Math\.round/);
