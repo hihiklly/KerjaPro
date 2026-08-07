@@ -33,3 +33,15 @@ test("quotation download and payment collection terms are implemented", async ()
   assert.match(source, /Within 30 days/);
   assert.match(source, /Finish job & set payment reminder/);
 });
+
+test("invoice sharing and tenant-scoped staff controls are present", async () => {
+  const fs = await import("node:fs/promises");
+  const [app, schema] = await Promise.all([fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"), fs.readFile(new URL("../db/schema.ts", import.meta.url), "utf8")]);
+  assert.match(app, /Share by WhatsApp/);
+  assert.match(app, /navigator\.share/);
+  assert.match(app, /OWNER \/ MASTER ACCOUNT/);
+  assert.match(app, /Worker — own assigned jobs/);
+  assert.match(schema, /businessMembers/);
+  assert.match(schema, /staffInvites/);
+  assert.match(schema, /assignedMemberId/);
+});
