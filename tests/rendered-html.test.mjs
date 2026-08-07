@@ -57,3 +57,17 @@ test("home SOP, payment receipts, and accounting readiness are present", async (
   assert.match(schema, /taxIdentificationNo/);
   assert.match(schema, /expenses/);
 });
+
+test("business registration and reusable service pricing are implemented", async () => {
+  const fs = await import("node:fs/promises");
+  const [app, schema] = await Promise.all([fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"), fs.readFile(new URL("../db/schema.ts", import.meta.url), "utf8")]);
+  assert.match(app, /Company \/ team business/);
+  assert.match(app, /Individual business/);
+  assert.match(app, /Master account permissions/);
+  assert.match(app, /reusable service catalogue/);
+  assert.match(app, /Tap saved services/);
+  assert.match(schema, /documentTemplates/);
+  assert.match(schema, /serviceCatalog/);
+  assert.match(schema, /standardPriceMinor/);
+  assert.match(schema, /businessType/);
+});
