@@ -4,7 +4,19 @@ import test from "node:test";
 async function render() {
   const workerUrl = new URL(`../dist/server/index.js?test=${Date.now()}`, import.meta.url);
   const { default: worker } = await import(workerUrl.href);
-  return worker.fetch(new Request("http://localhost/", { headers: { accept: "text/html" } }), { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } }, { waitUntil() {}, passThroughOnException() {} });
+  return worker.fetch(new Request("http://localhost/", { headers: {
+    accept: "text/html",
+    "oai-authenticated-user-id": "test-user",
+    "oai-authenticated-user-email": "owner@example.com",
+    "oai-authenticated-user-full-name": "Test%20Owner",
+    "oai-authenticated-user-full-name-encoding": "percent-encoded-utf-8",
+  } }), { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } }, { waitUntil() {}, passThroughOnException() {} });
+}
+
+async function renderLoggedOut() {
+  const workerUrl = new URL(`../dist/server/index.js?logged-out-test=${Date.now()}`, import.meta.url);
+  const { default: worker } = await import(workerUrl.href);
+  return worker.fetch(new Request("http://localhost/", { headers: { accept: "text/html" }, redirect: "manual" }), { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } }, { waitUntil() {}, passThroughOnException() {} });
 }
 
 test("renders the KerjaPro application shell", async () => {
@@ -14,6 +26,21 @@ test("renders the KerjaPro application shell", async () => {
   assert.match(html, /<title>KerjaPro/);
   assert.match(html, /Your daily work, sorted|What do you want to do/);
   assert.doesNotMatch(html, /codex-preview/);
+});
+
+test("logged-out visitors enter the real sign-in flow before the workspace", async () => {
+  const response = await renderLoggedOut();
+  assert.ok(response.status >= 300 && response.status < 400);
+  const location = new URL(response.headers.get("location") ?? "", "http://localhost");
+  assert.equal(location.pathname, "/signin-with-chatgpt");
+  assert.equal(location.searchParams.get("return_to"), "/");
+});
+
+test("desktop and settings surfaces expose the sign-out flow", async () => {
+  const source = await import("node:fs/promises").then(fs => fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"));
+  assert.equal(source.match(/href="\/signout-with-chatgpt\?return_to=%2F"/g)?.length, 2);
+  assert.match(source, /sidebar-signout/);
+  assert.match(source, /settings-signout/);
 });
 
 test("main workspace collections are loaded from local API routes", async () => {

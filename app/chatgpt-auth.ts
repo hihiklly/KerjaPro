@@ -1,4 +1,4 @@
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 export type ChatGPTUser = {
@@ -17,12 +17,16 @@ const PERCENT_ENCODED_UTF8 = "percent-encoded-utf-8";
 const SIGN_IN_PATH = "/signin-with-chatgpt";
 const SIGN_OUT_PATH = "/signout-with-chatgpt";
 const CALLBACK_PATH = "/callback";
+export const LOCAL_USER_COOKIE = "kerjapro-local-user";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
   const userId = requestHeaders.get(USER_ID_HEADER);
   const email = requestHeaders.get(USER_EMAIL_HEADER);
-  if (!userId || !email) return null;
+  if (!userId || !email) {
+    if (process.env.NODE_ENV !== "development") return null;
+    return getLocalDevelopmentUser();
+  }
 
   const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
   const fullName =
@@ -37,6 +41,18 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
     email,
     fullName,
   };
+}
+
+async function getLocalDevelopmentUser(): Promise<ChatGPTUser | null> {
+  const value = (await cookies()).get(LOCAL_USER_COOKIE)?.value;
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value)) as Partial<ChatGPTUser>;
+    if (typeof parsed.userId !== "string" || typeof parsed.email !== "string" || typeof parsed.displayName !== "string") return null;
+    return { userId: parsed.userId, email: parsed.email, displayName: parsed.displayName, fullName: typeof parsed.fullName === "string" ? parsed.fullName : null };
+  } catch {
+    return null;
+  }
 }
 
 export async function requireChatGPTUser(

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireChatGPTUser } from "./chatgpt-auth";
 import TradeApp from "./trade-app";
 
 export const metadata: Metadata = {
@@ -6,6 +7,7 @@ export const metadata: Metadata = {
   description: "The simple work assistant for Malaysian tradesmen.",
 };
 
-export default function Home() {
-  return <TradeApp />;
+export default async function Home() {
+  const user = await requireChatGPTUser("/");
+  return <TradeApp user={{ displayName: user.displayName, email: user.email }} />;
 }

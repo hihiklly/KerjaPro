@@ -2,8 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "kerjapro-mvp",
   "main": "worker/index.ts",
-  "compatibility_date": "2026-08-08",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_date": "2026-05-15",
   "d1_databases": [
     {
       "binding": "DB",
