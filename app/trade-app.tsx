@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { formatMoney, productConfig } from "./product-config";
 
 type Tab = "home" | "jobs" | "customers" | "documents" | "more";
@@ -15,6 +15,7 @@ type AppData = { workspace: Workspace | null; customers: ApiCustomer[]; jobs: Ap
 type OnboardingPayload = { businessType: "company" | "individual"; name: string; ownerName: string; masterRole: "boss" | "owner_worker"; phone: string; email?: string; registrationNo?: string; address?: string };
 
 const emptyData: AppData = { workspace: null, customers: [], jobs: [], documents: [] };
+const subscribeToHydration = () => () => {};
 
 const savedServices = [
   { code: "AC-SVC", category: "Aircon", name: "Standard aircon service", unit: "unit", price: 80 },
@@ -30,7 +31,7 @@ export default function TradeApp() {
   const [data, setData] = useState<AppData>(emptyData);
   const [dataState, setDataState] = useState<"loading" | "ready" | "error">("loading");
   const [dataError, setDataError] = useState("");
-  const [todayLabel, setTodayLabel] = useState("");
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [credits, setCredits] = useState(27);
   const [toast, setToast] = useState("");
@@ -42,7 +43,6 @@ export default function TradeApp() {
 
   useEffect(() => {
     let cancelled = false;
-    setTodayLabel(new Intl.DateTimeFormat("en-MY", { dateStyle: "full" }).format(new Date()));
     async function load() {
       setDataState("loading");
       try {
@@ -96,6 +96,7 @@ export default function TradeApp() {
   const filteredCustomers = useMemo(() => data.customers.filter(customer => `${customer.name} ${customer.phone} ${customer.serviceAddress}`.toLowerCase().includes(query.toLowerCase())), [data.customers, query]);
   const businessName = data.workspace?.business.name ?? "KerjaPro workspace";
   const ownerName = data.workspace?.business.ownerName ?? "Account owner";
+  const todayLabel = hydrated ? new Intl.DateTimeFormat("en-MY", { dateStyle: "full", timeZone: "Asia/Kuala_Lumpur" }).format(new Date()) : "";
 
   function generateQuote() {
     if (generationLock.current) return;
