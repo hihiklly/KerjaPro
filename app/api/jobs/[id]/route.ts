@@ -1,5 +1,5 @@
-import { and, asc, desc, eq } from "drizzle-orm";
-import { businessMembers, completionReports, customerPayments, customers, documents, documentVersions, invoiceItems, jobAssignments, jobEvents, jobLineItems, jobs, quotationItems, users } from "../../../../db/schema";
+import { and, asc, desc, eq, inArray, max } from "drizzle-orm";
+import { attachments, businessMembers, completionReports, customerPayments, customers, documents, documentVersions, invoiceItems, jobAssignments, jobCompensations, jobEvents, jobLineItems, jobs, quotationItems, users } from "../../../../db/schema";
 import { ApiError, enumValue, getAccountContext, optionalInteger, optionalString, readJson, requiredString, routeError } from "../../_lib/http";
 import { JOB_STATUSES, JobStatus, jobTotals, nextNumber, parseJobItems } from "../_shared";
 
@@ -11,14 +11,15 @@ export async function GET(_request: Request, context: RouteContext) {
     const { db, accountId } = await getAccountContext();
     const [record] = await db.select({ job: jobs, customer: customers }).from(jobs).innerJoin(customers, and(eq(customers.id, jobs.customerId), eq(customers.accountId, accountId))).where(and(eq(jobs.id, id), eq(jobs.accountId, accountId))).limit(1);
     if (!record) throw new ApiError(404, "Job not found");
-    const [items, jobDocuments, events] = await Promise.all([
+    const [items, jobDocuments, events, photos] = await Promise.all([
       db.select().from(jobLineItems).where(and(eq(jobLineItems.accountId, accountId), eq(jobLineItems.jobId, id))).orderBy(asc(jobLineItems.sortOrder)),
       db.select().from(documents).where(and(eq(documents.accountId, accountId), eq(documents.jobId, id))).orderBy(desc(documents.createdAt)),
       db.select().from(jobEvents).where(and(eq(jobEvents.accountId, accountId), eq(jobEvents.jobId, id))).orderBy(desc(jobEvents.createdAt)),
+      db.select({ id: attachments.id, fileName: attachments.fileName, mimeType: attachments.mimeType, sizeBytes: attachments.sizeBytes, createdAt: attachments.createdAt }).from(attachments).where(and(eq(attachments.accountId, accountId), eq(attachments.jobId, id))).orderBy(asc(attachments.createdAt)),
     ]);
-    const invoice = jobDocuments.find(document => document.kind === "invoice");
-    const payments = invoice ? await db.select().from(customerPayments).where(and(eq(customerPayments.accountId, accountId), eq(customerPayments.invoiceDocumentId, invoice.id))).orderBy(desc(customerPayments.receivedAt)) : [];
-    return Response.json({ ...record, items, documents: jobDocuments, events, payments });
+    const financialDocumentIds = jobDocuments.filter(document => document.kind === "invoice" || document.kind === "quotation").map(document => document.id);
+    const payments = financialDocumentIds.length ? await db.select().from(customerPayments).where(and(eq(customerPayments.accountId, accountId), inArray(customerPayments.invoiceDocumentId, financialDocumentIds))).orderBy(desc(customerPayments.receivedAt)) : [];
+    return Response.json({ ...record, items, documents: jobDocuments, events, payments, attachments: photos });
   } catch (error) {
     return routeError(error);
   }
@@ -48,14 +49,17 @@ export async function PATCH(request: Request, context: RouteContext) {
       const currentItems = await db.select().from(jobLineItems).where(and(eq(jobLineItems.accountId, accountId), eq(jobLineItems.jobId, id)));
       const allItems = [...currentItems.map(item => ({ ...item, catalogItemId: item.catalogItemId ?? null, costMinor: item.costMinor ?? null, commissionBasisPoints: item.commissionBasisPoints ?? null })), ...newItems];
       const totals = jobTotals(allItems, existing.discountMinor);
+      const alreadyPaidMinor = Math.max(0, existing.totalMinor - existing.balanceMinor);
       const [quote] = await db.select().from(documents).where(and(eq(documents.accountId, accountId), eq(documents.jobId, id), eq(documents.kind, "quotation"))).limit(1);
+      const [latestQuoteVersion] = quote ? await db.select({ value: max(documentVersions.version) }).from(documentVersions).where(and(eq(documentVersions.accountId, accountId), eq(documentVersions.documentId, quote.id))) : [{ value: 0 }];
       const changes: unknown[] = [
         db.insert(jobLineItems).values(newItems.map((item, index) => ({ ...item, accountId, jobId: id, sortOrder: currentItems.length + index, addedDuringJob: true }))),
-        db.update(jobs).set({ ...totals, balanceMinor: totals.totalMinor, updatedAt: new Date().toISOString() }).where(and(eq(jobs.id, id), eq(jobs.accountId, accountId))),
+        db.update(jobs).set({ ...totals, balanceMinor: Math.max(0, totals.totalMinor - alreadyPaidMinor), updatedAt: new Date().toISOString() }).where(and(eq(jobs.id, id), eq(jobs.accountId, accountId))),
         db.insert(jobEvents).values({ id: crypto.randomUUID(), accountId, jobId: id, actorUserId: user.userId, eventType: "items_added", detailJson: JSON.stringify({ count: newItems.length, totalMinor: totals.totalMinor }) }),
       ];
       if (quote) changes.push(
         db.update(documents).set({ subtotalMinor: totals.subtotalMinor, taxMinor: totals.taxMinor, totalMinor: totals.totalMinor, updatedAt: new Date().toISOString() }).where(and(eq(documents.id, quote.id), eq(documents.accountId, accountId))),
+        db.insert(documentVersions).values({ id: crypto.randomUUID(), accountId, documentId: quote.id, version: (latestQuoteVersion?.value ?? 0) + 1, source: "manual", contentJson: JSON.stringify({ change: "items_added", count: newItems.length, totalMinor: totals.totalMinor }) }),
         db.insert(quotationItems).values(newItems.map((item, index) => ({ id: crypto.randomUUID(), accountId, documentId: quote.id, description: item.description, quantityMilli: item.quantityMilli, unit: item.unit, unitPriceMinor: item.unitPriceMinor, amountMinor: item.amountMinor, sortOrder: currentItems.length + index }))),
       );
       await db.batch(changes as unknown as Parameters<typeof db.batch>[0]);
@@ -68,11 +72,15 @@ export async function PATCH(request: Request, context: RouteContext) {
       const discountMinor = optionalInteger(payload, "discountMinor", { min: 0, max: existing.subtotalMinor });
       if (discountMinor === null) throw new ApiError(400, "discountMinor is required");
       const totalMinor = Math.max(0, existing.subtotalMinor - discountMinor + existing.taxMinor);
-      await db.batch([
+      const [quote] = await db.select({ id: documents.id }).from(documents).where(and(eq(documents.accountId, accountId), eq(documents.jobId, id), eq(documents.kind, "quotation"))).limit(1);
+      const [latestQuoteVersion] = quote ? await db.select({ value: max(documentVersions.version) }).from(documentVersions).where(and(eq(documentVersions.accountId, accountId), eq(documentVersions.documentId, quote.id))) : [{ value: 0 }];
+      const changes: unknown[] = [
         db.update(jobs).set({ discountMinor, totalMinor, balanceMinor: Math.max(0, totalMinor - (existing.totalMinor - existing.balanceMinor)), updatedAt: new Date().toISOString() }).where(and(eq(jobs.id, id), eq(jobs.accountId, accountId))),
         db.update(documents).set({ totalMinor, updatedAt: new Date().toISOString() }).where(and(eq(documents.accountId, accountId), eq(documents.jobId, id), eq(documents.kind, "quotation"))),
         db.insert(jobEvents).values({ id: crypto.randomUUID(), accountId, jobId: id, actorUserId: user.userId, eventType: "discount_changed", detailJson: JSON.stringify({ discountMinor, totalMinor }) }),
-      ]);
+      ];
+      if (quote) changes.push(db.insert(documentVersions).values({ id: crypto.randomUUID(), accountId, documentId: quote.id, version: (latestQuoteVersion?.value ?? 0) + 1, source: "manual", contentJson: JSON.stringify({ change: "discount_changed", discountMinor, totalMinor }) }));
+      await db.batch(changes as unknown as Parameters<typeof db.batch>[0]);
       const [job] = await db.select().from(jobs).where(eq(jobs.id, id)).limit(1);
       return Response.json({ job });
     }
@@ -86,8 +94,24 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (action === "reschedule") {
       if (!["scheduled", "in_progress"].includes(existing.status)) throw new ApiError(409, "This job cannot be rescheduled now");
       const appointmentAt = requiredString(payload, "appointmentAt", 50);
-      const [job] = await db.update(jobs).set({ appointmentAt, technician: optionalString(payload, "technician", 200) ?? existing.technician, updatedAt: new Date().toISOString() }).where(and(eq(jobs.id, id), eq(jobs.accountId, accountId))).returning();
-      await db.insert(jobEvents).values({ id: crypto.randomUUID(), accountId, jobId: id, actorUserId: user.userId, eventType: "rescheduled", detailJson: JSON.stringify({ appointmentAt }) });
+      const assignedMemberId = optionalString(payload, "assignedMemberId", 100) ?? existing.assignedMemberId;
+      let technician = existing.technician;
+      if (assignedMemberId) {
+        const [assignee] = await db.select({ id: businessMembers.id, email: users.email }).from(businessMembers).innerJoin(users, eq(users.id, businessMembers.userId)).where(and(eq(businessMembers.id, assignedMemberId), eq(businessMembers.accountId, accountId), eq(businessMembers.status, "active"))).limit(1);
+        if (!assignee) throw new ApiError(400, "Select an active team member from this workspace");
+        technician = assignee.email.split("@")[0].replace(/[._-]+/g, " ");
+      }
+      const now = new Date().toISOString();
+      const changes: unknown[] = [
+        db.update(jobs).set({ appointmentAt, assignedMemberId, technician, updatedAt: now }).where(and(eq(jobs.id, id), eq(jobs.accountId, accountId))),
+        db.insert(jobEvents).values({ id: crypto.randomUUID(), accountId, jobId: id, actorUserId: user.userId, eventType: "rescheduled", detailJson: JSON.stringify({ appointmentAt, assignedMemberId }) }),
+      ];
+      if (assignedMemberId && assignedMemberId !== existing.assignedMemberId) changes.push(
+        db.update(jobAssignments).set({ endedAt: now, endReason: "rescheduled" }).where(and(eq(jobAssignments.accountId, accountId), eq(jobAssignments.jobId, id))),
+        db.insert(jobAssignments).values({ id: crypto.randomUUID(), accountId, jobId: id, assignedMemberId, assignedByMemberId: memberId, appointmentAt, priority: "normal", notifiedAt: now }),
+      );
+      await db.batch(changes as unknown as Parameters<typeof db.batch>[0]);
+      const [job] = await db.select().from(jobs).where(and(eq(jobs.id, id), eq(jobs.accountId, accountId))).limit(1);
       return Response.json({ job });
     }
 
@@ -113,12 +137,13 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const statements: unknown[] = [
       db.update(jobs).set(updates).where(and(eq(jobs.id, id), eq(jobs.accountId, accountId))),
-      db.insert(jobEvents).values({ id: crypto.randomUUID(), accountId, jobId: id, actorUserId: user.userId, eventType: action, fromStatus: existing.status, toStatus: transition.to, detailJson: JSON.stringify(payload) }),
+      db.insert(jobEvents).values({ id: crypto.randomUUID(), accountId, jobId: id, actorUserId: user.userId, eventType: action, fromStatus: existing.status, toStatus: updates.status ?? transition.to, detailJson: JSON.stringify(payload) }),
     ];
     if (action === "schedule" && updates.assignedMemberId) statements.push(db.insert(jobAssignments).values({ id: crypto.randomUUID(), accountId, jobId: id, assignedMemberId: updates.assignedMemberId, assignedByMemberId: memberId, appointmentAt: updates.appointmentAt, priority: "normal", notifiedAt: now }));
     if (action === "send_quote") statements.push(db.update(documents).set({ status: "confirmed", confirmedAt: now, updatedAt: now }).where(and(eq(documents.accountId, accountId), eq(documents.jobId, id), eq(documents.kind, "quotation"))));
     if (action === "complete") {
       const items = await db.select().from(jobLineItems).where(and(eq(jobLineItems.accountId, accountId), eq(jobLineItems.jobId, id))).orderBy(asc(jobLineItems.sortOrder));
+      const [quote] = await db.select({ id: documents.id }).from(documents).where(and(eq(documents.accountId, accountId), eq(documents.jobId, id), eq(documents.kind, "quotation"))).limit(1);
       const reportId = crypto.randomUUID();
       const invoiceId = crypto.randomUUID();
       const reportNumber = nextNumber("WR");
@@ -131,6 +156,8 @@ export async function PATCH(request: Request, context: RouteContext) {
         db.insert(documentVersions).values({ id: crypto.randomUUID(), accountId, documentId: invoiceId, version: 1, source: "manual", contentJson: JSON.stringify({ automaticallyGenerated: true, reportNumber }) }),
         db.insert(invoiceItems).values(items.map((item, index) => ({ id: crypto.randomUUID(), accountId, documentId: invoiceId, description: item.description, quantityMilli: item.quantityMilli, unitPriceMinor: item.unitPriceMinor, amountMinor: item.amountMinor, sortOrder: index }))),
       );
+      if (quote) statements.push(db.update(customerPayments).set({ invoiceDocumentId: invoiceId, updatedAt: now }).where(and(eq(customerPayments.accountId, accountId), eq(customerPayments.invoiceDocumentId, quote.id))));
+      if (existing.balanceMinor === 0) statements.push(db.update(jobCompensations).set({ status: "ready_for_approval", updatedAt: now }).where(and(eq(jobCompensations.accountId, accountId), eq(jobCompensations.jobId, id))));
     }
     await db.batch(statements as unknown as Parameters<typeof db.batch>[0]);
     const [job] = await db.select().from(jobs).where(and(eq(jobs.id, id), eq(jobs.accountId, accountId))).limit(1);

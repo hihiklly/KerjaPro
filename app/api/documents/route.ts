@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { completionReports, customers, documents, documentVersions, invoiceItems, jobs, quotationItems } from "../../../db/schema";
 import { ApiError, enumValue, getAccountContext, listOptions, optionalInteger, optionalString, readJson, requiredString, routeError } from "../_lib/http";
 
-const DOCUMENT_KINDS = ["quotation", "work_report", "invoice"] as const;
+const DOCUMENT_KINDS = ["quotation", "work_report", "invoice", "receipt"] as const;
 const DOCUMENT_STATUSES = ["draft", "confirmed", "void"] as const;
 
 export async function GET(request: Request) {
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
           amountMinor: item.amountMinor, sortOrder: index,
         }))),
       ]);
-    } else {
+    } else if (kind === "work_report") {
       const report = parseCompletionReport(payload.report);
       await db.batch([
         db.insert(documents).values(documentValues),
@@ -112,6 +112,11 @@ export async function POST(request: Request) {
         db.insert(completionReports).values({
           id: crypto.randomUUID(), accountId, documentId, ...report,
         }),
+      ]);
+    } else {
+      await db.batch([
+        db.insert(documents).values(documentValues),
+        db.insert(documentVersions).values(versionValues),
       ]);
     }
 
@@ -133,7 +138,7 @@ type ParsedItem = {
 };
 
 function parseItems(value: unknown, kind: (typeof DOCUMENT_KINDS)[number]): ParsedItem[] {
-  if (kind === "work_report") return [];
+  if (kind === "work_report" || kind === "receipt") return [];
   if (!Array.isArray(value) || value.length === 0) {
     throw new ApiError(400, "items must contain at least one line item");
   }

@@ -1,6 +1,6 @@
 # KerjaPro MVP
 
-Malaysia-first, mobile-first daily work assistant for solo tradesmen. The app covers customer and job workflows, quotations, work reports, invoices, reminders, editable AI drafts, AI Credit pricing, and a sandbox purchase experience.
+Malaysia-first, mobile-first job management for service and trade businesses. The app keeps customer intake, quotations, scheduling, work, invoices and payment collection inside one job.
 
 ## Architecture
 
@@ -17,14 +17,14 @@ The main workspace, customer, job, and document screens read from the tenant-sco
 
 - Guided owner/business onboarding with optional company information
 - Customers, jobs, assignment history, reminders and customer history surfaces
-- Manual-free and AI-assisted quotation review with explicit confirmation and PDF download
+- New Job intake with existing-customer history, inline new-customer creation, message analysis and voice transcription
 - Voice/transcript-ready work completion report with manual-free fallback, editable review and PDF download
 - Invoice, customer payment receipt, bank transfer, DuitNow and Touch 'n Go payment instructions
 - Team tasks, weekly schedule, job completion totals and owner-approved flat-pay/commission records
 - Configuration-driven PAYG bundles and Standard/Pro plan display
 - Credit reservation, idempotency, commit/reversal and admin-reason domain rules
 
-Workspace onboarding persists through the API, and the main customer, job, and document lists use the durable tenant-owned model. Provider-backed transcription/AI, service-catalog/settings routes, mutation forms for every workflow, and real billing webhooks remain activation work.
+Workspace onboarding and the complete New Job flow persist through tenant-scoped APIs. New customer records are inserted atomically with their first job, while exact phone matches reuse the saved customer and history.
 
 ## Persistence API
 
@@ -33,6 +33,10 @@ All routes use the ChatGPT authentication headers and resolve the caller's activ
 - `GET|POST /api/workspace` — retrieve or create the authenticated user's workspace
 - `GET|POST /api/customers` — list/search or create customers
 - `GET|PATCH /api/customers/:id` — retrieve customer history or update a customer
+- `GET|POST /api/catalog` — list or configure the business service/product menu
+- `POST /api/jobs/analyze` — transcribe or analyze a customer message against that menu
+- `POST /api/jobs/:id/payment` — record deposits, partial or full payment
+- `GET /api/team` — list active workspace members for scheduling
 - `GET|POST /api/jobs` — filter/list or create jobs
 - `GET|PATCH /api/jobs/:id` — retrieve a job workflow or update its state
 - `GET|POST /api/documents` — filter/list or atomically create a document, version, and line/report records
@@ -58,7 +62,7 @@ On localhost, unauthenticated visitors are redirected to the built-in developmen
 
 KerjaPro keeps quotations, scheduling, work completion, invoices, receipts, payments, revenue and commission attached to one job. Owners first create their own reusable service and product menu in **More**, including prices, units, duration, tax, cost and commission. Daily work then follows:
 
-`Select customer → Tap services/products → Quote → Schedule → Do work → Complete → Collect payment`
+`Write or choose customer → Tap services/products → Quote → Schedule → Do work → Complete → Collect payment`
 
 Deposits, partial payments, added work, discounts, rescheduling, cancellation, notes and warranty remain available under the job’s expandable options. Apply all D1 migrations before using the redesigned workflow.
 
@@ -74,14 +78,12 @@ pnpm run test
 
 ## Provider boundaries
 
-AI and payment UI is intentionally sandboxed in this repository. No real money is taken and no customer document is automatically sent. Production adapters must reserve a credit, call the AI provider, schema-validate the result, and commit or reverse the debit atomically. Paid entitlements must be granted only from verified, idempotent server webhooks.
-
-Voice recording/transcript controls are a provider-ready interface. They do not claim live transcription when `AI_PROVIDER`, `AI_API_KEY`, and `AI_MODEL` are not configured. The payment purchase screen is explicitly marked as a development sandbox.
+Customer-message analysis uses the OpenAI Responses API with strict structured output, and voice messages use the transcription API. Configure `OPENAI_API_KEY` to enable both. The server limits recording size, sends the audio transiently for transcription, validates catalog IDs returned by analysis, and never invents a demo result when the provider is unavailable.
 
 ## Production checklist
 
 1. Select and verify a Malaysia-supported recurring-payment provider; implement and audit its webhook adapter.
-2. Configure an AI/transcription provider, structured schemas, retention controls, cost tracking, timeouts, and failure reversal.
+2. Add provider cost tracking, request timeouts and operational rate limits for AI analysis at production scale.
 3. Complete the remaining client mutation forms, add server-side PDF/R2 handlers, and run tenant-isolation integration tests.
 4. Complete legal review of Privacy Policy, Terms, Malaysia PDPA handling, tax wording, and e-Invoice boundaries.
 5. Configure monitoring, rate limits, backups, migration rollout, account export/deletion, and incident response.

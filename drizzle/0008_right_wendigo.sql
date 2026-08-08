@@ -1,0 +1,1 @@
+CREATE INDEX `idx_attachments_account_job` ON `attachments` (`account_id`,`job_id`);

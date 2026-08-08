@@ -50,10 +50,46 @@ test("home stays focused on daily jobs and collection", async () => {
 
 test("new jobs use the saved menu and a sticky calculated total", async () => {
   const app = await fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8");
-  for (const copy of ["Select customer", "Pick what they need", "Search services or products", "Custom item", "Create Quote ·"]) assert.match(app, new RegExp(copy));
+  for (const copy of ["Customer & request", "Pick what they need", "Search services or products", "Custom item", "Create Quote ·"]) assert.match(app, new RegExp(copy));
   assert.match(app, /fetch\("\/api\/catalog"/);
   assert.match(app, /quantityMilli \* item\.unitPriceMinor/);
   assert.match(app, /className="order-panel"/);
+});
+
+test("new customers are entered inside New Job and saved atomically with the job", async () => {
+  const [app, route] = await Promise.all([
+    fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/api/jobs/route.ts", import.meta.url), "utf8"),
+  ]);
+  for (const copy of ["Choose an existing customer or add a new one", "Nothing is saved yet", "added automatically to Customers", "previous job"]) assert.match(app, new RegExp(copy));
+  assert.match(app, /customer-picker-trigger/);
+  assert.match(app, /localeCompare\(b\.name, "en", \{ sensitivity: "base" \}\)/);
+  assert.match(app, /fetchAllCustomers\(\)/);
+  assert.match(app, /offset \+= 100/);
+  assert.match(app, /setDraftCustomer\(\{ name: item\.name, phone: item\.phone, serviceAddress: item\.serviceAddress \}\)/);
+  assert.match(app, /readOnly=\{Boolean\(customer\)\}/);
+  assert.doesNotMatch(app, /className="customer-choice-grid"/);
+  assert.match(route, /payload\.customer/);
+  assert.match(route, /statements\.unshift\(db\.insert\(customers\)/);
+  assert.match(route, /await db\.batch\(statements/);
+  assert.match(route, /eq\(customers\.phone, phone\)/);
+});
+
+test("message and voice analysis use the real catalog and OpenAI APIs", async () => {
+  const [app, route, env] = await Promise.all([
+    fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/api/jobs/analyze/route.ts", import.meta.url), "utf8"),
+    fs.readFile(new URL("../.env.example", import.meta.url), "utf8"),
+  ]);
+  for (const copy of ["Analyze customer message", "Paste WhatsApp, SMS or speak it", "Voice message", "Analyze message"]) assert.match(app, new RegExp(copy));
+  assert.match(app, /navigator\.mediaDevices\.getUserMedia/);
+  assert.match(app, /new MediaRecorder/);
+  assert.match(route, /api\.openai\.com\/v1\/audio\/transcriptions/);
+  assert.match(route, /api\.openai\.com\/v1\/responses/);
+  assert.match(route, /serviceCatalog/);
+  assert.match(route, /json_schema/);
+  assert.match(env, /OPENAI_API_KEY/);
+  assert.doesNotMatch(app, /demo transcript/i);
 });
 
 test("one job owns its quotation, line items and financial totals", async () => {
@@ -92,12 +128,18 @@ test("scheduling uses real workspace members and persists assignment history", a
 });
 
 test("completion automatically generates the report and final invoice", async () => {
-  const route = await fs.readFile(new URL("../app/api/jobs/[id]/route.ts", import.meta.url), "utf8");
+  const [route, app] = await Promise.all([
+    fs.readFile(new URL("../app/api/jobs/[id]/route.ts", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"),
+  ]);
   assert.match(route, /action === "complete"/);
   assert.match(route, /kind: "work_report"/);
   assert.match(route, /completionReports/);
   assert.match(route, /kind: "invoice"/);
   assert.match(route, /invoiceItems/);
+  assert.match(route, /invoiceDocumentId: invoiceId/);
+  assert.match(app, /FINAL JOB SUMMARY/);
+  assert.match(app, /Completing this job automatically generates the service report and final invoice/);
 });
 
 test("payments support partial collection and close only at zero balance", async () => {
@@ -106,7 +148,41 @@ test("payments support partial collection and close only at zero balance", async
   assert.match(route, /balanceMinor === 0 \? "paid"/);
   assert.match(route, /db\.insert\(customerPayments\)/);
   assert.match(route, /nextNumber\("RCP"\)/);
+  assert.match(route, /kind: "receipt"/);
+  assert.match(route, /db\.insert\(documentVersions\)/);
   assert.match(route, /jobCompensations/);
+  assert.match(route, /itemCommissionMinor/);
+  assert.match(route, /ready_for_approval/);
+});
+
+test("during-job additions reuse the searchable menu with quantity and custom extras", async () => {
+  const [app, route] = await Promise.all([
+    fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/api/jobs/[id]/route.ts", import.meta.url), "utf8"),
+  ]);
+  for (const copy of ["Search the same preset menu", "Custom item / extra charge", "Added work", "Extra total"]) assert.match(app, new RegExp(copy));
+  assert.match(app, /changeQuantity/);
+  assert.match(app, /commissionBasisPoints: item\.commissionBasisPoints/);
+  assert.match(route, /alreadyPaidMinor/);
+  assert.match(route, /change: "items_added"/);
+});
+
+test("job photos are stored privately in R2 with D1 metadata", async () => {
+  const [upload, photo, schema, hosting, app] = await Promise.all([
+    fs.readFile(new URL("../app/api/jobs/[id]/attachments/route.ts", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/api/jobs/[id]/attachments/[attachmentId]/route.ts", import.meta.url), "utf8"),
+    fs.readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+    fs.readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(upload, /getFilesBinding/);
+  assert.match(upload, /files\.put/);
+  assert.match(upload, /db\.insert\(attachments\)/);
+  assert.match(upload, /file\.type\.startsWith\("image\/"\)/);
+  assert.match(photo, /getFilesBinding\(\)\.get/);
+  assert.match(schema, /idx_attachments_account_job/);
+  assert.match(hosting, /"r2": "FILES"/);
+  assert.match(app, /accept="image\/\*"/);
 });
 
 test("businesses configure a general-purpose catalogue", async () => {
@@ -122,9 +198,13 @@ test("businesses configure a general-purpose catalogue", async () => {
 });
 
 test("migration preserves old jobs while adding durable workflow tables", async () => {
-  const migration = await fs.readFile(new URL("../drizzle/0006_square_baron_strucker.sql", import.meta.url), "utf8");
+  const [migration, attachmentMigration] = await Promise.all([
+    fs.readFile(new URL("../drizzle/0006_square_baron_strucker.sql", import.meta.url), "utf8"),
+    fs.readFile(new URL("../drizzle/0008_right_wendigo.sql", import.meta.url), "utf8"),
+  ]);
   assert.match(migration, /CREATE TABLE `job_line_items`/);
   assert.match(migration, /CREATE TABLE `job_events`/);
   assert.match(migration, /WHEN 'new' THEN 'draft'/);
   assert.match(migration, /WHEN 'quoted' THEN 'quote_sent'/);
+  assert.match(attachmentMigration, /idx_attachments_account_job/);
 });
