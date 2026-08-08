@@ -60,7 +60,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       if (quote) changes.push(
         db.update(documents).set({ subtotalMinor: totals.subtotalMinor, taxMinor: totals.taxMinor, totalMinor: totals.totalMinor, updatedAt: new Date().toISOString() }).where(and(eq(documents.id, quote.id), eq(documents.accountId, accountId))),
         db.insert(documentVersions).values({ id: crypto.randomUUID(), accountId, documentId: quote.id, version: (latestQuoteVersion?.value ?? 0) + 1, source: "manual", contentJson: JSON.stringify({ change: "items_added", count: newItems.length, totalMinor: totals.totalMinor }) }),
-        db.insert(quotationItems).values(newItems.map((item, index) => ({ id: crypto.randomUUID(), accountId, documentId: quote.id, description: item.description, quantityMilli: item.quantityMilli, unit: item.unit, unitPriceMinor: item.unitPriceMinor, amountMinor: item.amountMinor, sortOrder: currentItems.length + index }))),
+        db.insert(quotationItems).values(newItems.map((item, index) => ({ id: crypto.randomUUID(), accountId, documentId: quote.id, description: item.description, remarks: item.remarks, quantityMilli: item.quantityMilli, unit: item.unit, unitPriceMinor: item.unitPriceMinor, amountMinor: item.amountMinor, sortOrder: currentItems.length + index }))),
       );
       await db.batch(changes as unknown as Parameters<typeof db.batch>[0]);
       const [job] = await db.select().from(jobs).where(eq(jobs.id, id)).limit(1);

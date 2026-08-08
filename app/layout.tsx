@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import "./globals.css";
 import "./customer-picker.css";
 import "./workflow-polish.css";
+import "./quotation-form.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();

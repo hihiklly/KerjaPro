@@ -70,7 +70,7 @@ export async function POST(request: Request) {
       db.insert(jobLineItems).values(items.map((item, index) => ({ ...item, accountId, jobId, sortOrder: index }))),
       db.insert(documents).values({ id: documentId, accountId, customerId, jobId, kind: "quotation", documentNumber, status: "draft", subtotalMinor: totals.subtotalMinor, taxMinor: totals.taxMinor, totalMinor: totals.totalMinor }),
       db.insert(documentVersions).values({ id: crypto.randomUUID(), accountId, documentId, version: 1, source: "manual", contentJson: JSON.stringify({ discountMinor, createdFrom: "job-menu" }) }),
-      db.insert(quotationItems).values(items.map((item, index) => ({ id: crypto.randomUUID(), accountId, documentId, description: item.description, quantityMilli: item.quantityMilli, unit: item.unit, unitPriceMinor: item.unitPriceMinor, amountMinor: item.amountMinor, sortOrder: index }))),
+      db.insert(quotationItems).values(items.map((item, index) => ({ id: crypto.randomUUID(), accountId, documentId, description: item.description, remarks: item.remarks, quantityMilli: item.quantityMilli, unit: item.unit, unitPriceMinor: item.unitPriceMinor, amountMinor: item.amountMinor, sortOrder: index }))),
       db.insert(jobEvents).values({ id: crypto.randomUUID(), accountId, jobId, actorUserId: user.userId, eventType: "job_created", toStatus: "draft", detailJson: JSON.stringify({ documentNumber }), createdAt: now }),
     ];
     if (newCustomer) statements.unshift(db.insert(customers).values(newCustomer));

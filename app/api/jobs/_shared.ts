@@ -8,6 +8,7 @@ export type ParsedJobItem = {
   catalogItemId: string | null;
   itemType: "service" | "product" | "custom";
   description: string;
+  remarks: string | null;
   quantityMilli: number;
   unit: string;
   unitPriceMinor: number;
@@ -38,6 +39,7 @@ export function parseJobItems(value: unknown): ParsedJobItem[] {
       catalogItemId: optionalString(item, "catalogItemId", 100),
       itemType,
       description: requiredString(item, "description", 500),
+      remarks: optionalString(item, "remarks", 500),
       quantityMilli,
       unit: requiredString(item, "unit", 50),
       unitPriceMinor,

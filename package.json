@@ -13,7 +13,8 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:local": "WRANGLER_LOG_PATH=.wrangler/logs/db-migrate.log wrangler d1 migrations apply DB --local --persist-to .wrangler/state"
+    "db:migrate:local": "WRANGLER_LOG_PATH=.wrangler/logs/db-migrate.log wrangler d1 migrations apply DB --local --persist-to .wrangler/state",
+    "db:seed:aircon": "WRANGLER_LOG_PATH=.wrangler/logs/db-seed-aircon.log wrangler d1 execute DB --local --file scripts/seed-aircon.sql"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

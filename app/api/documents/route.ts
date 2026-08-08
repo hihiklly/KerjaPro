@@ -90,6 +90,7 @@ export async function POST(request: Request) {
         db.insert(documentVersions).values(versionValues),
         db.insert(quotationItems).values(items.map((item, index) => ({
           id: crypto.randomUUID(), accountId, documentId, description: item.description,
+          remarks: item.remarks,
           quantityMilli: item.quantityMilli, unit: item.unit ?? "unit",
           unitPriceMinor: item.unitPriceMinor, amountMinor: item.amountMinor, sortOrder: index,
         }))),
@@ -131,6 +132,7 @@ export async function POST(request: Request) {
 
 type ParsedItem = {
   description: string;
+  remarks: string | null;
   quantityMilli: number;
   unitPriceMinor: number;
   amountMinor: number;
@@ -162,6 +164,7 @@ function parseItems(value: unknown, kind: (typeof DOCUMENT_KINDS)[number]): Pars
     }
     return {
       description,
+      remarks: optionalString(item, "remarks", 500),
       quantityMilli,
       unitPriceMinor,
       amountMinor,

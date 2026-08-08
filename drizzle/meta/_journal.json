@@ -64,6 +64,13 @@
       "when": 1786185352632,
       "tag": "0008_right_wendigo",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1786195353680,
+      "tag": "0009_round_micromax",
+      "breakpoints": true
     }
   ]
 }

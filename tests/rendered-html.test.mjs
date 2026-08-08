@@ -48,12 +48,38 @@ test("home stays focused on daily jobs and collection", async () => {
   assert.doesNotMatch(app, /type Tab = .*documents/);
 });
 
-test("new jobs use the saved menu and a sticky calculated total", async () => {
-  const app = await fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8");
-  for (const copy of ["Customer & request", "Pick what they need", "Search services or products", "Custom item", "Create Quote ·"]) assert.match(app, new RegExp(copy));
+test("new quotations use master-backed child rows and a calculated total", async () => {
+  const [app, quoteStyles] = await Promise.all([
+    fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/quotation-form.css", import.meta.url), "utf8"),
+  ]);
+  for (const copy of ["NEW QUOTATION", "Create quotation", "Fetched from Customer Master", "Line items", "Unit price", "Remarks", "Non-stock item", "Create draft quotation"]) assert.match(app, new RegExp(copy));
   assert.match(app, /fetch\("\/api\/catalog"/);
-  assert.match(app, /quantityMilli \* item\.unitPriceMinor/);
-  assert.match(app, /className="order-panel"/);
+  assert.match(app, /quantityMilli \* line\.unitPriceMinor/);
+  assert.match(app, /className="quotation-summary"/);
+  assert.match(app, /lineFromMaster\(master/);
+  assert.match(app, /itemType === "custom"/);
+  assert.match(app, /updateLine\(index, \{ remarks:/);
+  assert.match(app, /scrollIntoView/);
+  assert.match(quoteStyles, /\.quotation-items\{min-height:max-content/);
+  assert.match(quoteStyles, /max-height:none/);
+});
+
+test("local demo seed provides air-conditioning masters and mock customers", async () => {
+  const [seed, pkg] = await Promise.all([
+    fs.readFile(new URL("../scripts/seed-aircon.sql", import.meta.url), "utf8"),
+    fs.readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ]);
+  for (const copy of ["Air Conditioner General Service", "Chemical Cleaning Service", "Troubleshooting & Inspection", "Split Unit Installation", "R32 Refrigerant Top-up", "Ahmad Faizal", "Lim Mei Ling", "Siti Nur Aisyah"]) assert.match(seed, new RegExp(copy));
+  assert.match(seed, /WHERE NOT EXISTS/g);
+  assert.match(pkg, /db:seed:aircon/);
+});
+
+test("master data refreshes when the app regains focus", async () => {
+  const app = await fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /window\.addEventListener\("focus", refresh\)/);
+  assert.match(app, /document\.addEventListener\("visibilitychange", refresh\)/);
+  assert.match(app, /document\.visibilityState === "visible"/);
 });
 
 test("new customers are entered inside New Job and saved atomically with the job", async () => {
@@ -61,29 +87,29 @@ test("new customers are entered inside New Job and saved atomically with the job
     fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"),
     fs.readFile(new URL("../app/api/jobs/route.ts", import.meta.url), "utf8"),
   ]);
-  for (const copy of ["Choose an existing customer or add a new one", "Nothing is saved yet", "added automatically to Customers", "previous job"]) assert.match(app, new RegExp(copy));
-  assert.match(app, /customer-picker-trigger/);
-  assert.match(app, /localeCompare\(b\.name, "en", \{ sensitivity: "base" \}\)/);
+  for (const copy of ["Select customer", "Add new customer", "New Customer Master record", "Saved automatically", "previous quote\/job"]) assert.match(app, new RegExp(copy));
+  assert.match(app, /className="customer-master-field"/);
+  assert.match(app, /sortedCustomers/);
   assert.match(app, /fetchAllCustomers\(\)/);
   assert.match(app, /offset \+= 100/);
-  assert.match(app, /setDraftCustomer\(\{ name: item\.name, phone: item\.phone, serviceAddress: item\.serviceAddress \}\)/);
-  assert.match(app, /readOnly=\{Boolean\(customer\)\}/);
-  assert.doesNotMatch(app, /className="customer-choice-grid"/);
+  assert.match(app, /value="__new__"/);
+  assert.match(app, /enteringNewCustomer && draftCustomer\.name/);
+  assert.match(app, /enteringNewCustomer && draftCustomer\.name\.trim\(\)/);
+  assert.match(app, /setDraftCustomer\(\{ name: "", phone: "", serviceAddress: "" \}\)/);
+  assert.match(app, /customer: customerId \? undefined : draftCustomer/);
   assert.match(route, /payload\.customer/);
   assert.match(route, /statements\.unshift\(db\.insert\(customers\)/);
   assert.match(route, /await db\.batch\(statements/);
   assert.match(route, /eq\(customers\.phone, phone\)/);
 });
 
-test("message and voice analysis use the real catalog and OpenAI APIs", async () => {
+test("quotation form does not show customer-message import controls", async () => {
   const [app, route, env] = await Promise.all([
     fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"),
     fs.readFile(new URL("../app/api/jobs/analyze/route.ts", import.meta.url), "utf8"),
     fs.readFile(new URL("../.env.example", import.meta.url), "utf8"),
   ]);
-  for (const copy of ["Analyze customer message", "Paste WhatsApp, SMS or speak it", "Voice message", "Analyze message"]) assert.match(app, new RegExp(copy));
-  assert.match(app, /navigator\.mediaDevices\.getUserMedia/);
-  assert.match(app, /new MediaRecorder/);
+  for (const copy of ["Import from a customer message", "Voice message", "Analyze & prefill"]) assert.doesNotMatch(app, new RegExp(copy));
   assert.match(route, /api\.openai\.com\/v1\/audio\/transcriptions/);
   assert.match(route, /api\.openai\.com\/v1\/responses/);
   assert.match(route, /serviceCatalog/);
