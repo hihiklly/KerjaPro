@@ -142,7 +142,7 @@ export default function TradeApp({ user }: { user: AuthenticatedUser }) {
           <NavButton active={tab === "catalog"} icon="▦" label="Services & prices" onClick={() => openTab("catalog")} />
           <NavButton active={tab === "more"} icon="⚙" label="Business settings" onClick={() => setTab("more")} />
         </nav>
-        <div className="sidebar-account"><button className="profile-row" onClick={() => setSheet("register")} aria-label="Open profile"><span className="avatar">{initials(businessName)}</span><span><strong>{businessName}</strong><small>{accountRoleLabel(data.workspace?.membership.role)}</small></span><em>›</em></button><a className="sidebar-signout" href="/signout-with-chatgpt?return_to=%2F">Sign out</a></div>
+        <div className="sidebar-account"><div className="profile-row"><span className="avatar">{initials(businessName)}</span><span><strong>{businessName}</strong><small>{accountRoleLabel(data.workspace?.membership.role)}</small></span></div><a className="sidebar-signout" href="/signout-with-chatgpt?return_to=%2F">Sign out</a></div>
       </aside>
 
       <section className="main-area">

@@ -36,6 +36,23 @@ test("logged-out visitors enter the real sign-in flow before the workspace", asy
   assert.equal(location.searchParams.get("return_to"), "/");
 });
 
+test("email sign-in remains primary while social providers are placeholders", async () => {
+  const fs = await import("node:fs/promises");
+  const [page, form, route] = await Promise.all([
+    fs.readFile(new URL("../app/signin-with-chatgpt/page.tsx", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/signin-with-chatgpt/local-sign-in-form.tsx", import.meta.url), "utf8"),
+    fs.readFile(new URL("../app/api/auth/local/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(form, /Continue with email/);
+  assert.match(form, /fetch\("\/api\/auth\/local"/);
+  assert.match(page, /Continue with Google/);
+  assert.match(page, /Continue with Apple/);
+  assert.equal(page.match(/disabled>/g)?.length, 2);
+  assert.doesNotMatch(page, /href=.*api\/auth\/(?:google|apple)/);
+  assert.match(route, /SHA-256/);
+  assert.match(route, /HttpOnly; SameSite=Lax/);
+});
+
 test("desktop and settings surfaces expose the sign-out flow", async () => {
   const source = await import("node:fs/promises").then(fs => fs.readFile(new URL("../app/trade-app.tsx", import.meta.url), "utf8"));
   assert.equal(source.match(/href="\/signout-with-chatgpt\?return_to=%2F"/g)?.length, 2);

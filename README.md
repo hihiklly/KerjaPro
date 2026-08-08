@@ -52,7 +52,7 @@ pnpm run dev
 
 Open the local address printed by the development server. Copy `.env.example` to `.env` only when configuring external providers.
 
-On localhost, unauthenticated visitors are redirected to the built-in development sign-in page. The same email deterministically reopens the same local D1 account. This cookie-based development session is disabled in production; hosted deployments continue to use the authenticated OpenAI user headers.
+On localhost, unauthenticated visitors are redirected to the built-in development sign-in page. The same email deterministically reopens the same local D1 account. This cookie-based development session is disabled in production; hosted deployments continue to use the authenticated OpenAI user headers. Google and Apple controls are visible placeholders only and do not start an external sign-in flow.
 
 ## Verification
 
