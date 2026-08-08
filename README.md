@@ -54,6 +54,14 @@ Open the local address printed by the development server. Copy `.env.example` to
 
 On localhost, unauthenticated visitors are redirected to the built-in development sign-in page. The same email deterministically reopens the same local D1 account. This cookie-based development session is disabled in production; hosted deployments continue to use the authenticated OpenAI user headers. Google and Apple controls are visible placeholders only and do not start an external sign-in flow.
 
+## Daily job workflow
+
+KerjaPro keeps quotations, scheduling, work completion, invoices, receipts, payments, revenue and commission attached to one job. Owners first create their own reusable service and product menu in **More**, including prices, units, duration, tax, cost and commission. Daily work then follows:
+
+`Select customer → Tap services/products → Quote → Schedule → Do work → Complete → Collect payment`
+
+Deposits, partial payments, added work, discounts, rescheduling, cancellation, notes and warranty remain available under the job’s expandable options. Apply all D1 migrations before using the redesigned workflow.
+
 ## Verification
 
 ```bash

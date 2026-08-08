@@ -3,8 +3,8 @@ import { requireChatGPTUser } from "./chatgpt-auth";
 import TradeApp from "./trade-app";
 
 export const metadata: Metadata = {
-  title: "KerjaPro — Your daily work, sorted",
-  description: "The simple work assistant for Malaysian tradesmen.",
+  title: "KerjaPro — One job. Quote to payment.",
+  description: "A simple, mobile-first job workflow for service and trade businesses.",
 };
 
 export default async function Home() {
